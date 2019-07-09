@@ -173,7 +173,7 @@ int convert(int argc, char* argv[]) {
 	}
 
 	cout << "V210 to P210\n";
-	v210ToP010(d_inputV210, argv[1]);
+	v210ToP010(d_inputV210, argv[2]);
 
 	checkCudaErrors(cudaFree(d_inputV210));
 	return EXIT_SUCCESS;

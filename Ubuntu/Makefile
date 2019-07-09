@@ -34,7 +34,7 @@
 ################################################################################
 
 # Location of the CUDA Toolkit
-CUDA_PATH ?= /usr/local/cuda-10.1
+CUDA_PATH ?= /usr/local/cuda
 
 ##############################
 # start deprecated interface #
@@ -243,7 +243,7 @@ ALL_LDFLAGS += $(addprefix -Xlinker ,$(EXTRA_LDFLAGS))
 
 # Common includes and paths for CUDA
 INCLUDES  := -I.
-INCLUDES  += -I/usr/local/cuda-10.1/samples/common/inc
+INCLUDES  += -I/usr/local/cuda-10.0/samples/common/inc
 LIBRARIES :=
 
 ################################################################################
@@ -291,10 +291,13 @@ convertToP010.o:convertToP010.cu
 convertToRGB.o:convertToRGB.cu
 	$(EXEC) $(NVCC) $(INCLUDES) $(ALL_CCFLAGS) $(GENCODE_FLAGS) -o $@ -c $<
 
-Source.o:Source.cpp
+convert.o:convert.cpp
 	$(EXEC) $(NVCC) $(INCLUDES) $(ALL_CCFLAGS) $(GENCODE_FLAGS) -o $@ -c $<
 
-Convert: convertToP010.o convertToRGB.o Source.o
+main.o:main.cpp
+	$(EXEC) $(NVCC) $(INCLUDES) $(ALL_CCFLAGS) $(GENCODE_FLAGS) -o $@ -c $<
+
+Convert: convertToP010.o convertToRGB.o convert.o main.o
 	$(EXEC) $(NVCC) $(ALL_LDFLAGS) $(GENCODE_FLAGS) -o $@ $+ $(LIBRARIES)
 	#$(EXEC) mkdir -p /usr/local/cuda-10.1/bin/$(TARGET_ARCH)/$(TARGET_OS)/$(BUILD_TYPE)
 	#$(EXEC) cp $@ /usr/local/cuda-10.1/bin/$(TARGET_ARCH)/$(TARGET_OS)/$(BUILD_TYPE)
@@ -303,7 +306,7 @@ run: build
 	$(EXEC) ./Convert
 
 clean:
-	rm -f Convert Source.o convertToRGB.o convertToP010.o
+	rm -f Convert main.o convert.o convertToRGB.o convertToP010.o
 	rm -rf ../../bin/$(TARGET_ARCH)/$(TARGET_OS)/$(BUILD_TYPE)/Convert
 
 clobber: clean
