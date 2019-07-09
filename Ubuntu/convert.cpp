@@ -1,39 +1,13 @@
-#include <cuda.h>
-#include <cuda_runtime.h>
-#include <helper_cuda.h>
-
-//#include <Windows.h>
-#include <math.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <cassert>
-#include <fstream>
-#include <iostream>
-#include <memory>
-
+#include "convert.h"
 #include "convertToP010.h"
 #include "convertToRGB.h"
-
-using namespace std;
-
-#define TEST_LOOP 1
-
-typedef struct _nv210_to_p010_context_t {
-	int width;
-	int height;
-	int device;  // cuda device ID
-	int ctx_pitch; // the value will be suitable for Texture memroy.
-	int batch;
-	//int ctx_heights;
-	char *input_v210_file;
-} nv210_to_p010_context_t;
 
 nv210_to_p010_context_t g_ctx;
 
 int parseCmdLine(int argc, char *argv[]) {
-	memset(&g_ctx, 0, sizeof(g_ctx));
 
+	memset(&g_ctx, 0, sizeof(g_ctx));
+	
 	if (argc == 3) {
 		// Run using default arguments
 		g_ctx.input_v210_file = sdkFindFilePath(argv[1], argv[0]);
@@ -48,13 +22,13 @@ int parseCmdLine(int argc, char *argv[]) {
 
 	g_ctx.device = findCudaDevice(argc, (const char **)argv);
 	if (g_ctx.width == 0 || g_ctx.height == 0 || !g_ctx.input_v210_file) {
-		cout << "Usage: " << argv[0] << " [options]\n";
+		cout << "Usage: " << argv[0] << " inputf outputf\n";
 		return EXIT_FAILURE;
 	}
 	return EXIT_SUCCESS;
 }
 
-/*
+/* 
   Load v210 yuvfile data into GPU device memory
 */
 static int loadV210Frame(unsigned short *d_inputV210) {
@@ -74,7 +48,7 @@ static int loadV210Frame(unsigned short *d_inputV210) {
 #else
 	pV210FrameData = (unsigned short *)malloc(frameSize * sizeof(unsigned short));
 	if (pV210FrameData == NULL) {
-		cerr << "Failed to malloc pP010FrameData\n";
+		cerr << "Failed to malloc FrameData\n";
 		return -1;
 	}
 	memset((void *)pV210FrameData, 0, frameSize * sizeof(unsigned short));
@@ -105,20 +79,9 @@ static int loadV210Frame(unsigned short *d_inputV210) {
 /*
   Draw yuv data
 */
-void dumpYUV(unsigned short *d_srcNv12, int width, int height, int batch, char *folder, char *tag) {
+void dumpYUV(unsigned short *d_srcNv12, int width, int height, int batch, char *filename) {
 	unsigned short *nv12Data, *d_nv12;
-	char directory[60], mkdir_cmd[256];
 	int size = 0;
-
-#if !defined(_WIN32)
-	sprintf(directory, "output/%s", folder);
-	sprintf(mkdir_cmd, "mkdir -p %s 2> /dev/null", directory);
-#else
-	sprintf(directory, "output\\%s", folder);
-	sprintf(mkdir_cmd, "mkdir %s 2> nul", directory);
-#endif
-
-	int ret = system(mkdir_cmd);
 	size = g_ctx.ctx_pitch * g_ctx.height * 2;
 
 	nv12Data = (unsigned short *)malloc(size * sizeof(unsigned short));
@@ -129,8 +92,6 @@ void dumpYUV(unsigned short *d_srcNv12, int width, int height, int batch, char *
 	memset((void *)nv12Data, 0, size * sizeof(unsigned short));
 	d_nv12 = d_srcNv12;
 	for (int i = 0; i < batch; i++) {
-		char filename[120];
-		sprintf(filename, "%s/%s.yuv", directory, tag, (i));
 		ofstream nv12File(filename, ostream::out | ostream::binary);
 
 		cudaMemcpy((void *)nv12Data, (void *)d_nv12, size * sizeof(unsigned short), cudaMemcpyDeviceToHost);
@@ -173,12 +134,12 @@ void v210ToP010(unsigned short *d_inputV210, char *argv) {
 
 	checkCudaErrors(cudaEventElapsedTime(&elapsedTime, start, stop));
 	cout.precision(3);
-	cout << fixed << "  CUDA v210 to p010(" << g_ctx.width << "x" << g_ctx.height << " --> "
+	cout << fixed << "  CUDA v210 to p210(" << g_ctx.width << "x" << g_ctx.height << " --> "
 		<< g_ctx.width << "x" << g_ctx.height << "), "
 		<< "average time: " << (elapsedTime / (TEST_LOOP * 1.0f)) << "ms"
 		<< " ==> " << (elapsedTime / (TEST_LOOP * 1.0f)) / g_ctx.batch << " ms/frame\n";
 
-	dumpYUV(d_outputYUV422, g_ctx.ctx_pitch, g_ctx.height, g_ctx.batch, (char *)"out", argv);
+	dumpYUV(d_outputYUV422, g_ctx.ctx_pitch, g_ctx.height, g_ctx.batch, argv);
 
 	/* release resources */
 	checkCudaErrors(cudaEventDestroy(start));
@@ -187,11 +148,9 @@ void v210ToP010(unsigned short *d_inputV210, char *argv) {
 	checkCudaErrors(cudaFree(d_outputYUV422));
 }
 
-int main(int argc, char* argv[]) {
+int convert(int argc, char* argv[]) {
 	unsigned short *d_inputV210;
 	int size = 0;
-	argv[1] = "v210_000.yuv";
-	argv[2] = "yuv422_10bits_planar.yuv";
 	if (parseCmdLine(argc, argv) < 0) {
 		return EXIT_FAILURE;
 	}
@@ -213,10 +172,8 @@ int main(int argc, char* argv[]) {
 		return EXIT_FAILURE;
 	}
 
-	cout << "V210 to P010\n";
-	//do {
-	v210ToP010(d_inputV210, argv[2]);
-	//} while (GetAsyncKeyState(VK_ESCAPE) == 0);
+	cout << "V210 to P210\n";
+	v210ToP010(d_inputV210, argv[1]);
 
 	checkCudaErrors(cudaFree(d_inputV210));
 	return EXIT_SUCCESS;
