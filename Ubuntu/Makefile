@@ -244,6 +244,7 @@ ALL_LDFLAGS += $(addprefix -Xlinker ,$(EXTRA_LDFLAGS))
 # Common includes and paths for CUDA
 INCLUDES  := -I.
 INCLUDES  += -I/usr/local/cuda-10.0/samples/common/inc
+INCLUDES  += -Ilibdpx/
 LIBRARIES :=
 
 ################################################################################
@@ -298,7 +299,7 @@ main.o:main.cpp
 	$(EXEC) $(NVCC) $(INCLUDES) $(ALL_CCFLAGS) $(GENCODE_FLAGS) -o $@ -c $<
 
 Convert: convertToP010.o convertToRGB.o convert.o main.o
-	$(EXEC) $(NVCC) $(ALL_LDFLAGS) $(GENCODE_FLAGS) -o $@ $+ $(LIBRARIES)
+	$(EXEC) $(NVCC) $(ALL_LDFLAGS) $(GENCODE_FLAGS) ./libdpx/libdpx.a -o $@ $+
 	#$(EXEC) mkdir -p /usr/local/cuda-10.1/bin/$(TARGET_ARCH)/$(TARGET_OS)/$(BUILD_TYPE)
 	#$(EXEC) cp $@ /usr/local/cuda-10.1/bin/$(TARGET_ARCH)/$(TARGET_OS)/$(BUILD_TYPE)
 

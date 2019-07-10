@@ -16,6 +16,8 @@
 using namespace std;
 
 #define TEST_LOOP 1
+#define RGB_SIZE 3
+#define YUV422_PLANAR_SIZE 2
 
 typedef struct _nv210_to_p010_context_t {
 	int width;

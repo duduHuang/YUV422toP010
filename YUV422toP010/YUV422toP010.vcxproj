@@ -11,6 +11,16 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="libdpx\Codec.cpp" />
+    <ClCompile Include="libdpx\DPX.cpp" />
+    <ClCompile Include="libdpx\DPXHeader.cpp" />
+    <ClCompile Include="libdpx\ElementReadStream.cpp" />
+    <ClCompile Include="libdpx\InStream.cpp" />
+    <ClCompile Include="libdpx\OutStream.cpp" />
+    <ClCompile Include="libdpx\Reader.cpp" />
+    <ClCompile Include="libdpx\RunLengthEncoding.cpp" />
+    <ClCompile Include="libdpx\TestFunc.cpp" />
+    <ClCompile Include="libdpx\Writer.cpp" />
     <ClCompile Include="Source.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -22,6 +32,20 @@
   <ItemGroup>
     <ClInclude Include="convertToP010.h" />
     <ClInclude Include="convertToRGB.h" />
+    <ClInclude Include="libdpx\BaseTypeConverter.h" />
+    <ClInclude Include="libdpx\Codec.h" />
+    <ClInclude Include="libdpx\DPX.h" />
+    <ClInclude Include="libdpx\DPXHeader.h" />
+    <ClInclude Include="libdpx\DPXStream.h" />
+    <ClInclude Include="libdpx\ElementReadStream.h" />
+    <ClInclude Include="libdpx\EndianSwap.h" />
+    <ClInclude Include="libdpx\ReaderInternal.h" />
+    <ClInclude Include="libdpx\RunLengthEncoding.h" />
+    <ClInclude Include="libdpx\TestFunc.h" />
+    <ClInclude Include="libdpx\WriterInternal.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="libdpx\Makefile.am" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{A1568A0D-735A-47CF-9A13-DD78144E45E9}</ProjectGuid>
