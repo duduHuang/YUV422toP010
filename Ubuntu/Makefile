@@ -34,7 +34,7 @@
 ################################################################################
 
 # Location of the CUDA Toolkit
-CUDA_PATH ?= /usr/local/cuda
+CUDA_PATH ?= /usr/local/cuda-10.1
 
 ##############################
 # start deprecated interface #
@@ -242,35 +242,35 @@ ALL_LDFLAGS += $(addprefix -Xlinker ,$(LDFLAGS))
 ALL_LDFLAGS += $(addprefix -Xlinker ,$(EXTRA_LDFLAGS))
 
 # Common includes and paths for CUDA
-INCLUDES  := -I.
-INCLUDES  += -I/usr/local/cuda-10.0/samples/common/inc
-INCLUDES  += -Ilibdpx/
-LIBRARIES :=
+#INCLUDES  := -I.
+INCLUDES  := -I$(CUDA_PATH)/samples/common/inc
+INCLUDES  += -Ilibdpx
+LIBRARIES := -lnvjpeg
 
 ################################################################################
 
 # Gencode arguments
-SMS ?= 30 35 37 50 52 60 61 70 75
+#SMS ?= 30 35 37 50 52 60 61 70 75
 
-ifeq ($(SMS),)
-$(info >>> WARNING - no SM architectures have been specified - waiving sample <<<)
-SAMPLE_ENABLED := 0
-endif
+#ifeq ($(SMS),)
+#$(info >>> WARNING - no SM architectures have been specified - waiving sample <<<)
+#SAMPLE_ENABLED := 0
+#endif
 
-ifeq ($(GENCODE_FLAGS),)
+#ifeq ($(GENCODE_FLAGS),)
 # Generate SASS code for each SM architecture listed in $(SMS)
-$(foreach sm,$(SMS),$(eval GENCODE_FLAGS += -gencode arch=compute_$(sm),code=sm_$(sm)))
+#$(foreach sm,$(SMS),$(eval GENCODE_FLAGS += -gencode arch=compute_$(sm),code=sm_$(sm)))
 
 # Generate PTX code from the highest SM architecture in $(SMS) to guarantee forward-compatibility
-HIGHEST_SM := $(lastword $(sort $(SMS)))
-ifneq ($(HIGHEST_SM),)
-GENCODE_FLAGS += -gencode arch=compute_$(HIGHEST_SM),code=compute_$(HIGHEST_SM)
-endif
-endif
+#HIGHEST_SM := $(lastword $(sort $(SMS)))
+#ifneq ($(HIGHEST_SM),)
+#GENCODE_FLAGS += -gencode arch=compute_$(HIGHEST_SM),code=compute_$(HIGHEST_SM)
+#endif
+#endif
 
-ifeq ($(SAMPLE_ENABLED),0)
-EXEC ?= @echo "[@]"
-endif
+#ifeq ($(SAMPLE_ENABLED),0)
+#EXEC ?= @echo "[@]"
+#endif
 
 ################################################################################
 
@@ -299,15 +299,13 @@ main.o:main.cpp
 	$(EXEC) $(NVCC) $(INCLUDES) $(ALL_CCFLAGS) $(GENCODE_FLAGS) -o $@ -c $<
 
 Convert: convertToP010.o convertToRGB.o convert.o main.o
-	$(EXEC) $(NVCC) $(ALL_LDFLAGS) $(GENCODE_FLAGS) ./libdpx/libdpx.a -o $@ $+
-	#$(EXEC) mkdir -p /usr/local/cuda-10.1/bin/$(TARGET_ARCH)/$(TARGET_OS)/$(BUILD_TYPE)
-	#$(EXEC) cp $@ /usr/local/cuda-10.1/bin/$(TARGET_ARCH)/$(TARGET_OS)/$(BUILD_TYPE)
+	$(EXEC) $(NVCC) $(ALL_LDFLAGS) $(GENCODE_FLAGS) ./libdpx/libdpx.a -o $@ $+ $(LIBRARIES)
 
 run: build
-	$(EXEC) ./Convert
+	$(EXEC) ./Convert v210.yuv r.rgb
 
 clean:
-	rm -f Convert main.o convert.o convertToRGB.o convertToP010.o
+	rm -f Convert main.o convert.o convertToRGB.o convertToP010.o r.rgb ddppxx.dpx test.jpg
 	rm -rf ../../bin/$(TARGET_ARCH)/$(TARGET_OS)/$(BUILD_TYPE)/Convert
 
 clobber: clean

@@ -11,4 +11,7 @@ extern "C"
 void convertToRGB(uint16_t *dpSrc, int nSrcPitch, uint16_t *dpDst, int nDstWidth, int nDstHeight,
 	int nBatch, int block_size, cudaStream_t stram = 0);
 
+void convertToRGB(uint16_t *dpSrc, int nSrcPitch, uint8_t *dpDst, int nDstWidth, int nDstHeight,
+	int nBatch, int block_size, cudaStream_t stram = 0);
+
 #endif // !__H_CONVERTTORGB__

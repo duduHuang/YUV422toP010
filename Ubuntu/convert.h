@@ -1,8 +1,11 @@
 #ifndef __H_CONVERT__
 #define __H_CONVERT__
 #include <cuda.h>
+#include "nvjpeg.h"
 #include <cuda_runtime.h>
 #include <helper_cuda.h>
+#include <helper_timer.h>
+#include <cuda_runtime_api.h>
 
 #include <math.h>
 #include <stdio.h>
@@ -27,6 +30,15 @@ typedef struct _nv210_to_p010_context_t {
 	int batch;
 	char *input_v210_file;
 } nv210_to_p010_context_t;
+
+typedef struct _encode_params_t {
+	nvjpegHandle_t nv_handle;
+	nvjpegEncoderState_t nv_enc_state;
+	nvjpegEncoderParams_t nv_enc_params;
+	cudaStream_t stream;
+	nvjpegImage_t nv_image;
+	nvjpegStatus_t err;
+} encode_params_t;
 
 int convert(int argc, char* argv[]);
 

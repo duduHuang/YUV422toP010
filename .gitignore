@@ -1,2 +1,5 @@
 YUV422toP010/Debug/*
-/.vs/Test/v15/Browse.VC.opendb
+.vs/*
+YUV422toP010/data/*
+YUV422toP010/x64/*
+x64/*

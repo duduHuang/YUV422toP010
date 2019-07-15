@@ -249,11 +249,49 @@ void dumpYUV(unsigned short *d_srcNv12, int width, int height, int batch, char *
 	free(nv12Data);
 }
 
+void dumpYUV(unsigned char *d_srcNv12, int width, int height, int batch, char *folder, char *tag) {
+	unsigned char *nv12Data, *d_nv12;
+	char directory[60], mkdir_cmd[256];
+	int size = 0;
+
+#if !defined(_WIN32)
+	sprintf(directory, "output/%s", folder);
+	sprintf(mkdir_cmd, "mkdir -p %s 2> /dev/null", directory);
+#else
+	sprintf(directory, "output\\%s", folder);
+	sprintf(mkdir_cmd, "mkdir %s 2> nul", directory);
+#endif
+
+	int ret = system(mkdir_cmd);
+	size = g_ctx.ctx_pitch * g_ctx.height * RGB_SIZE;
+
+	nv12Data = (unsigned char *)malloc(size * sizeof(unsigned short));
+	if (nv12Data == NULL) {
+		cerr << "Failed to allcoate memory\n";
+		return;
+	}
+	memset((void *)nv12Data, 0, size * sizeof(unsigned short));
+	d_nv12 = d_srcNv12;
+	for (int i = 0; i < batch; i++) {
+		char filename[120];
+		sprintf(filename, "%s/%s.yuv", directory, tag, (i));
+		ofstream nv12File(filename, ostream::out | ostream::binary);
+
+		cudaMemcpy((void *)nv12Data, (void *)d_nv12, size * sizeof(unsigned short), cudaMemcpyDeviceToHost);
+		if (nv12File) {
+			nv12File.write((char *)nv12Data, size * sizeof(unsigned short));
+			nv12File.close();
+		}
+		d_nv12 += width * height;
+	}
+	free(nv12Data);
+}
+
 /*
   Convert v210 to p010
 */
 void v210ToP010(unsigned short *d_inputV210, char *argv) {
-	unsigned short *d_outputYUV422;
+	unsigned char *d_outputYUV422;
 	int size = 0, block_size = 0;
 
 	size = g_ctx.ctx_pitch * g_ctx.height * g_ctx.batch;
@@ -284,7 +322,7 @@ void v210ToP010(unsigned short *d_inputV210, char *argv) {
 		<< "average time: " << (elapsedTime / (TEST_LOOP * 1.0f)) << "ms"
 		<< " ==> " << (elapsedTime / (TEST_LOOP * 1.0f)) / g_ctx.batch << " ms/frame\n";
 
-	dpxHandler(d_outputYUV422);
+	//dpxHandler(d_outputYUV422);
 	dumpYUV(d_outputYUV422, g_ctx.ctx_pitch, g_ctx.height, g_ctx.batch, (char *)"out", argv);
 
 	/* release resources */
