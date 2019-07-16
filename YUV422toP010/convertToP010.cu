@@ -62,7 +62,7 @@ __global__ static void convertToP010Kernel(const uint16_t *pV210, uint16_t *pP01
 void convertToP010(uint16_t *dpSrc, int nSrcPitch, uint16_t * dpDst, int nDstWidth, int nDstHeight,
 	int nBatch, int block_size, cudaStream_t stream) {
 	// Restricting blocks in Z-dim till 32 to not launch too many blocks
-	dim3 blocks(16, 16, 1);
+	dim3 blocks(32, 16, 1);
 	dim3 grids((7680 + blocks.x - 1) / blocks.x, (((4320 * 4 / 3) + blocks.y) - 1) / blocks.y, 1);
 	convertToP010Kernel << <grids, blocks, 0, stream >> > (dpSrc, dpDst, nSrcPitch, nDstHeight, nBatch);
 }

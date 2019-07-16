@@ -11,6 +11,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="convert.cpp" />
     <ClCompile Include="libdpx\Codec.cpp" />
     <ClCompile Include="libdpx\DPX.cpp" />
     <ClCompile Include="libdpx\DPXHeader.cpp" />
@@ -21,16 +22,10 @@
     <ClCompile Include="libdpx\RunLengthEncoding.cpp" />
     <ClCompile Include="libdpx\TestFunc.cpp" />
     <ClCompile Include="libdpx\Writer.cpp" />
-    <ClCompile Include="Source.cpp" />
+    <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <CudaCompile Include="convertToP010.cu">
-      <Include Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(CUDA_SDK_PATH)\common\inc;%(Include)</Include>
-    </CudaCompile>
-    <CudaCompile Include="convertToRGB.cu" />
-    <CudaCompile Include="resize.cu" />
-  </ItemGroup>
-  <ItemGroup>
+    <ClInclude Include="convert.h" />
     <ClInclude Include="convertToP010.h" />
     <ClInclude Include="convertToRGB.h" />
     <ClInclude Include="libdpx\BaseTypeConverter.h" />
@@ -44,10 +39,17 @@
     <ClInclude Include="libdpx\RunLengthEncoding.h" />
     <ClInclude Include="libdpx\TestFunc.h" />
     <ClInclude Include="libdpx\WriterInternal.h" />
+    <ClInclude Include="lookupTableF.h" />
     <ClInclude Include="resize.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="libdpx\Makefile.am" />
+  </ItemGroup>
+  <ItemGroup>
+    <CudaCompile Include="convertToP010.cu" />
+    <CudaCompile Include="convertToRGB.cu" />
+    <CudaCompile Include="lookupTableF.cu" />
+    <CudaCompile Include="resize.cu" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{A1568A0D-735A-47CF-9A13-DD78144E45E9}</ProjectGuid>
