@@ -28,6 +28,9 @@ typedef struct _nv210_to_p010_context_t {
 	int device;  // cuda device ID
 	int ctx_pitch; // the value will be suitable for Texture memroy.
 	int batch;
+
+	int dst_width;
+	int dst_height;
 	char *input_v210_file;
 } nv210_to_p010_context_t;
 
@@ -35,9 +38,10 @@ typedef struct _encode_params_t {
 	nvjpegHandle_t nv_handle;
 	nvjpegEncoderState_t nv_enc_state;
 	nvjpegEncoderParams_t nv_enc_params;
-	cudaStream_t stream;
 	nvjpegImage_t nv_image;
 	nvjpegStatus_t err;
+
+	unsigned char *t;
 } encode_params_t;
 
 int convert(int argc, char* argv[]);

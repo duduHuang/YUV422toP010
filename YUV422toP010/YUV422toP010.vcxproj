@@ -28,6 +28,7 @@
       <Include Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(CUDA_SDK_PATH)\common\inc;%(Include)</Include>
     </CudaCompile>
     <CudaCompile Include="convertToRGB.cu" />
+    <CudaCompile Include="resize.cu" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="convertToP010.h" />
@@ -43,6 +44,7 @@
     <ClInclude Include="libdpx\RunLengthEncoding.h" />
     <ClInclude Include="libdpx\TestFunc.h" />
     <ClInclude Include="libdpx\WriterInternal.h" />
+    <ClInclude Include="resize.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="libdpx\Makefile.am" />

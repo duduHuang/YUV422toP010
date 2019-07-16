@@ -2,10 +2,12 @@
 #include "convertToP010.h"
 #include "convertToRGB.h"
 #include "libdpx/DPX.h"
+#include "resize.h"
 
 using namespace dpx;
 
 nv210_to_p010_context_t g_ctx;
+encode_params_t en_params;
 
 int parseCmdLine(int argc, char *argv[]) {
 
@@ -21,6 +23,8 @@ int parseCmdLine(int argc, char *argv[]) {
         g_ctx.width = 7680;
         g_ctx.height = 4320;
         g_ctx.batch = 1;
+        g_ctx.dst_width = 1920;
+        g_ctx.dst_height = 1080;
     }
 
     g_ctx.device = findCudaDevice(argc, (const char **)argv);
@@ -176,44 +180,46 @@ int dpxHandler(unsigned short *src) {
 /*
   Jpeg encoder
 */
-int encode_images(unsigned short *d_Dst, int width, int height, int batch) {
-    encode_params_t en_params;
+int encode_images(unsigned short *d_inputV210, int width, int height, int batch, int dstWidth, int dstHeight, cudaStream_t stream) {
+
     size_t length = 0;
 
     // initialize nvjpeg structures
     checkCudaErrors(nvjpegCreateSimple(&en_params.nv_handle));
-    checkCudaErrors(cudaStreamCreate(&en_params.stream));
-    checkCudaErrors(nvjpegEncoderStateCreate(en_params.nv_handle, &en_params.nv_enc_state, en_params.stream));
-    checkCudaErrors(nvjpegEncoderParamsCreate(en_params.nv_handle, &en_params.nv_enc_params, en_params.stream));
+    checkCudaErrors(nvjpegEncoderStateCreate(en_params.nv_handle, &en_params.nv_enc_state, stream));
+    checkCudaErrors(nvjpegEncoderParamsCreate(en_params.nv_handle, &en_params.nv_enc_params, stream));
 
     // Set encode parameters
-    //checkCudaErrors(nvjpegEncoderParamsSetQuality(en_params.nv_enc_params, 70, en_params.stream));
-    //checkCudaErrors(nvjpegEncoderParamsSetOptimizedHuffman(en_params.nv_enc_params, 0, en_params.stream));
-    checkCudaErrors(nvjpegEncoderParamsSetSamplingFactors(en_params.nv_enc_params, NVJPEG_CSS_444, en_params.stream));
-    checkCudaErrors(cudaMalloc(&en_params.nv_image.channel[0], width * height * RGB_SIZE * sizeof(unsigned short)));
-    //convertToRGB(d_inputV210, width, d_Dst, width, height, batch, 0, en_params.stream);
-    cudaMemcpy(en_params.nv_image.channel[0], d_Dst, width * height * 3 * sizeof(unsigned char), cudaMemcpyHostToDevice);
-    //en_params.nv_image.channel[0] = d_Dst;
-    en_params.nv_image.pitch[0] = width * 3 * 2;
+    //checkCudaErrors(nvjpegEncoderParamsSetQuality(en_params.nv_enc_params, 70, stream));
+    //checkCudaErrors(nvjpegEncoderParamsSetOptimizedHuffman(en_params.nv_enc_params, 0, stream));
+    checkCudaErrors(nvjpegEncoderParamsSetSamplingFactors(en_params.nv_enc_params, NVJPEG_CSS_444, stream));
+    en_params.nv_image.pitch[0] = dstWidth * RGB_SIZE * sizeof(unsigned char);
+    checkCudaErrors(cudaMalloc(&en_params.t, width * height * RGB_SIZE * sizeof(unsigned char)));
+    checkCudaErrors(cudaMalloc(&en_params.nv_image.channel[0], dstWidth * dstHeight * RGB_SIZE * sizeof(unsigned char)));
+
+    convertToRGB(d_inputV210, width, en_params.t, width, height, batch, 0, stream);
+    resizeBatch(en_params.t, width, height, en_params.nv_image.channel[0], dstWidth, dstHeight, batch, stream);
+
+    en_params.nv_image.pitch[0] = dstWidth * RGB_SIZE * sizeof(unsigned char);
     // Compress image
     checkCudaErrors(nvjpegEncodeImage(en_params.nv_handle, en_params.nv_enc_state, en_params.nv_enc_params,
-        &en_params.nv_image, NVJPEG_INPUT_RGBI, width, height, en_params.stream));
+        &en_params.nv_image, NVJPEG_INPUT_RGBI, dstWidth, dstHeight, stream));
     //checkCudaErrors(nvjpegEncodeYUV(en_params.nv_handle, en_params.nv_enc_state, en_params.nv_enc_params,
-    //    &en_params.nv_image, NVJPEG_CSS_422, width, height, en_params.stream));
-    checkCudaErrors(cudaStreamSynchronize(en_params.stream));
+    //    &en_params.nv_image, NVJPEG_CSS_422, width, height, stream));
+    checkCudaErrors(cudaStreamSynchronize(stream));
     // get compressed stream size
 
     checkCudaErrors(
-      nvjpegEncodeRetrieveBitstream(en_params.nv_handle, en_params.nv_enc_state, NULL, &length, en_params.stream));
+      nvjpegEncodeRetrieveBitstream(en_params.nv_handle, en_params.nv_enc_state, NULL, &length, stream));
 
     // get stream itself
-    checkCudaErrors(cudaStreamSynchronize(en_params.stream));
+    checkCudaErrors(cudaStreamSynchronize(stream));
     vector<unsigned char> jpeg(length);
     checkCudaErrors(
-    nvjpegEncodeRetrieveBitstream(en_params.nv_handle, en_params.nv_enc_state, jpeg.data(), &length, en_params.stream));
+    nvjpegEncodeRetrieveBitstream(en_params.nv_handle, en_params.nv_enc_state, jpeg.data(), &length, stream));
 
     // write stream to file
-    checkCudaErrors(cudaStreamSynchronize(en_params.stream));
+    checkCudaErrors(cudaStreamSynchronize(stream));
     ofstream output_file("test.jpg", ios::out | ios::binary);
     output_file.write((char *)jpeg.data(), length);
     output_file.close();
@@ -221,40 +227,38 @@ int encode_images(unsigned short *d_Dst, int width, int height, int batch) {
     checkCudaErrors(nvjpegDestroy(en_params.nv_handle));
     checkCudaErrors(nvjpegEncoderStateDestroy(en_params.nv_enc_state));
     checkCudaErrors(nvjpegEncoderParamsDestroy(en_params.nv_enc_params));
-    //checkCudaErrors(cudaStreamDestroy(en_params.stream));
     return EXIT_SUCCESS;
 }
 
 /*
   Draw yuv data
 */
-void dumpYUV(unsigned short *d_srcNv12, int width, int height, int batch, char *filename) {
+void dumpYUV(unsigned short *d_srcNv12, int width, int height, int batch, char *filename, cudaStream_t stream) {
     unsigned short *nv12Data, *d_nv12;
     int size = 0;
     size = g_ctx.ctx_pitch * g_ctx.height * RGB_SIZE;
 
-    nv12Data = (unsigned short *)malloc(size * sizeof(unsigned short));
-    if (nv12Data == NULL) {
-        cerr << "Failed to allcoate memory\n";
-        return;
-    }
-    memset((void *)nv12Data, 0, size * sizeof(unsigned short));
+    //nv12Data = (unsigned short *)malloc(size * sizeof(unsigned short));
+    //if (nv12Data == NULL) {
+    //    cerr << "Failed to allcoate memory\n";
+    //    return;
+    //}
+    //memset((void *)nv12Data, 0, size * sizeof(unsigned short));
     d_nv12 = d_srcNv12;
     for (int i = 0; i < batch; i++) {
         //ofstream nv12File(filename, ostream::out | ostream::binary);
 
-        cudaMemcpy((void *)nv12Data, (void *)d_nv12, size * sizeof(unsigned short), cudaMemcpyDeviceToHost);
+        //cudaMemcpy((void *)nv12Data, (void *)d_nv12, size * sizeof(unsigned short), cudaMemcpyDeviceToHost);
         //if (nv12File) {
         //    nv12File.write((char *)nv12Data, size * sizeof(unsigned short));
         //    nv12File.close();
         //}
-        encode_images(nv12Data, g_ctx.ctx_pitch, g_ctx.height, g_ctx.batch);
         d_nv12 += width * height;
     }
-    free(nv12Data);
+    //free(nv12Data);
 }
 
-void dumpYUV(unsigned char *d_srcNv12, int width, int height, int batch, char *filename) {
+void dumpYUV(unsigned char *d_srcNv12, int width, int height, int batch, char *filename, cudaStream_t stream) {
     unsigned char *nv12Data, *d_nv12;
     int size = 0;
     size = g_ctx.ctx_pitch * g_ctx.height * RGB_SIZE;
@@ -269,12 +273,11 @@ void dumpYUV(unsigned char *d_srcNv12, int width, int height, int batch, char *f
     for (int i = 0; i < batch; i++) {
         //ofstream nv12File(filename, ostream::out | ostream::binary);
 
-        cudaMemcpy((void *)nv12Data, (void *)d_nv12, size * sizeof(unsigned short), cudaMemcpyDeviceToHost);
+        //cudaMemcpy((void *)nv12Data, (void *)d_nv12, size * sizeof(unsigned short), cudaMemcpyDeviceToHost);
         //if (nv12File) {
         //    nv12File.write((char *)nv12Data, size * sizeof(unsigned short));
         //    nv12File.close();
         //}
-        //encode_images(nv12Data, g_ctx.ctx_pitch, g_ctx.height, g_ctx.batch);
         d_nv12 += width * height;
     }
     free(nv12Data);
@@ -284,11 +287,11 @@ void dumpYUV(unsigned char *d_srcNv12, int width, int height, int batch, char *f
   Convert v210 to p010
 */
 void v210ToP010(unsigned short *d_inputV210, char *argv) {
-    unsigned short *d_outputYUV422;
+    //unsigned short *d_outputYUV422;
     int size = 0, block_size = 0;
 
     size = g_ctx.ctx_pitch * g_ctx.height * g_ctx.batch;
-    checkCudaErrors(cudaMalloc((void **)&d_outputYUV422, size * RGB_SIZE * sizeof(unsigned short)));
+    //checkCudaErrors(cudaMalloc((void **)&d_outputYUV422, size * RGB_SIZE * sizeof(unsigned short)));
     cudaStream_t stream;
     checkCudaErrors(cudaStreamCreate(&stream));
     // create cuda event handles
@@ -302,9 +305,10 @@ void v210ToP010(unsigned short *d_inputV210, char *argv) {
     for (int i = 0; i < TEST_LOOP; i++) {
         //convertToP010(d_inputV210, g_ctx.ctx_pitch, d_outputYUV422,
         //  g_ctx.ctx_pitch, g_ctx.height, g_ctx.batch, block_size, 0);
-        convertToRGB(d_inputV210, g_ctx.ctx_pitch, d_outputYUV422,
-            g_ctx.ctx_pitch, g_ctx.height, g_ctx.batch, block_size, 0);
-        dumpYUV(d_outputYUV422, g_ctx.ctx_pitch, g_ctx.height, g_ctx.batch, argv);
+        encode_images(d_inputV210, g_ctx.ctx_pitch, g_ctx.height, g_ctx.batch, g_ctx.dst_width, g_ctx.dst_height, stream);
+        //convertToRGB(d_inputV210, g_ctx.ctx_pitch, d_outputYUV422,
+        //    g_ctx.ctx_pitch, g_ctx.height, g_ctx.batch, block_size, 0);
+        //dumpYUV(d_outputYUV422, g_ctx.ctx_pitch, g_ctx.height, g_ctx.batch, argv, stream);
     }
     checkCudaErrors(cudaEventRecord(stop, 0));
     checkCudaErrors(cudaEventSynchronize(stop));
@@ -322,7 +326,7 @@ void v210ToP010(unsigned short *d_inputV210, char *argv) {
     checkCudaErrors(cudaEventDestroy(start));
     checkCudaErrors(cudaEventDestroy(stop));
     checkCudaErrors(cudaStreamDestroy(stream));
-    checkCudaErrors(cudaFree(d_outputYUV422));
+    //checkCudaErrors(cudaFree(d_outputYUV422));
 }
 
 int convert(int argc, char* argv[]) {
