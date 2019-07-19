@@ -41,7 +41,8 @@ typedef struct _encode_params_t {
 	nvjpegImage_t nv_image;
 	nvjpegStatus_t err;
 
-	unsigned char *t;
+	unsigned short *t;
+	//unsigned char *t;
 } encode_params_t;
 
 int convert(int argc, char* argv[]);

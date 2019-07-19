@@ -10,4 +10,7 @@ extern "C"
 void resizeBatch(uint8_t *dpSrc, int nSrcPitch, int nSrcHeight, uint8_t *dpDst, int nDstWidth, int nDstHeight,
 	int nBatch, cudaStream_t stram = 0);
 
+void resizeBatch(uint16_t *dpSrc, int nSrcPitch, int nSrcHeight, uint16_t *dpDst, int nDstWidth, int nDstHeight,
+	int nBatch, cudaStream_t stram = 0);
+
 #endif // !__H_RESIZE__

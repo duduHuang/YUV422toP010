@@ -3,7 +3,6 @@
 #include "convertToRGB.h"
 #include "libdpx/DPX.h"
 #include "resize.h"
-#include "lookupTableF.h"
 
 using namespace dpx;
 
@@ -82,6 +81,12 @@ static int loadV210Frame(unsigned short *d_inputV210) {
 #endif
     v210File.close();
     return EXIT_SUCCESS;
+}
+
+void lookupTableF(int *lookupTable) {
+    for (int i = 0; i < 1024; ++i) {
+        lookupTable[i] = round(i * 0.249);
+    }
 }
 
 /*
@@ -179,68 +184,12 @@ int dpxHandler(unsigned short *src) {
 }
 
 /*
-  Jpeg encoder
-*/
-int encode_images(unsigned short *d_inputV210, int width, int height, int batch, int dstWidth, int dstHeight, cudaStream_t stream) {
-    int *lookupTable;
-    size_t length = 0;
-
-    checkCudaErrors(cudaMalloc((void **)&lookupTable, 1024 * sizeof(int)));
-    // initialize nvjpeg structures
-    checkCudaErrors(nvjpegCreateSimple(&en_params.nv_handle));
-    checkCudaErrors(nvjpegEncoderStateCreate(en_params.nv_handle, &en_params.nv_enc_state, stream));
-    checkCudaErrors(nvjpegEncoderParamsCreate(en_params.nv_handle, &en_params.nv_enc_params, stream));
-
-    // Set encode parameters
-    //checkCudaErrors(nvjpegEncoderParamsSetQuality(en_params.nv_enc_params, 70, stream));
-    //checkCudaErrors(nvjpegEncoderParamsSetOptimizedHuffman(en_params.nv_enc_params, 0, stream));
-    checkCudaErrors(nvjpegEncoderParamsSetSamplingFactors(en_params.nv_enc_params, NVJPEG_CSS_444, stream));
-    en_params.nv_image.pitch[0] = dstWidth * RGB_SIZE * sizeof(unsigned char);
-    checkCudaErrors(cudaMalloc(&en_params.t, width * height * RGB_SIZE * sizeof(unsigned char)));
-    checkCudaErrors(cudaMalloc(&en_params.nv_image.channel[0], dstWidth * dstHeight * RGB_SIZE * sizeof(unsigned char)));
-
-    lookupTableF(lookupTable, stream);
-    convertToRGB(d_inputV210, width, en_params.t, width, height, batch, lookupTable, stream);
-    resizeBatch(en_params.t, width, height, en_params.nv_image.channel[0], dstWidth, dstHeight, batch, stream);
-
-    en_params.nv_image.pitch[0] = dstWidth * RGB_SIZE * sizeof(unsigned char);
-    // Compress image
-    checkCudaErrors(nvjpegEncodeImage(en_params.nv_handle, en_params.nv_enc_state, en_params.nv_enc_params,
-        &en_params.nv_image, NVJPEG_INPUT_RGBI, dstWidth, dstHeight, stream));
-    //checkCudaErrors(nvjpegEncodeYUV(en_params.nv_handle, en_params.nv_enc_state, en_params.nv_enc_params,
-    //    &en_params.nv_image, NVJPEG_CSS_422, width, height, stream));
-    checkCudaErrors(cudaStreamSynchronize(stream));
-    // get compressed stream size
-
-    checkCudaErrors(
-      nvjpegEncodeRetrieveBitstream(en_params.nv_handle, en_params.nv_enc_state, NULL, &length, stream));
-
-    // get stream itself
-    checkCudaErrors(cudaStreamSynchronize(stream));
-    vector<unsigned char> jpeg(length);
-    checkCudaErrors(
-    nvjpegEncodeRetrieveBitstream(en_params.nv_handle, en_params.nv_enc_state, jpeg.data(), &length, stream));
-
-    // write stream to file
-    checkCudaErrors(cudaStreamSynchronize(stream));
-    ofstream output_file("test.jpg", ios::out | ios::binary);
-    output_file.write((char *)jpeg.data(), length);
-    output_file.close();
-    checkCudaErrors(cudaFree(en_params.nv_image.channel[0]));
-    checkCudaErrors(nvjpegDestroy(en_params.nv_handle));
-    checkCudaErrors(nvjpegEncoderStateDestroy(en_params.nv_enc_state));
-    checkCudaErrors(nvjpegEncoderParamsDestroy(en_params.nv_enc_params));
-    checkCudaErrors(cudaFree(lookupTable));
-    return EXIT_SUCCESS;
-}
-
-/*
   Draw yuv data
 */
 void dumpYUV(unsigned short *d_srcNv12, int width, int height, int batch, char *filename, cudaStream_t stream) {
     unsigned short *nv12Data, *d_nv12;
     int size = 0;
-    size = g_ctx.ctx_pitch * g_ctx.height * RGB_SIZE;
+    size = width * height * RGB_SIZE;
 
     nv12Data = (unsigned short *)malloc(size * sizeof(unsigned short));
     if (nv12Data == NULL) {
@@ -265,21 +214,21 @@ void dumpYUV(unsigned short *d_srcNv12, int width, int height, int batch, char *
 void dumpYUV(unsigned char *d_srcNv12, int width, int height, int batch, char *filename, cudaStream_t stream) {
     unsigned char *nv12Data, *d_nv12;
     int size = 0;
-    size = g_ctx.ctx_pitch * g_ctx.height * RGB_SIZE;
+    size = width * height * RGB_SIZE;
 
-    nv12Data = (unsigned char *)malloc(size * sizeof(unsigned short));
+    nv12Data = (unsigned char *)malloc(size * sizeof(unsigned char));
     if (nv12Data == NULL) {
         cerr << "Failed to allcoate memory\n";
         return;
     }
-    memset((void *)nv12Data, 0, size * sizeof(unsigned short));
+    memset((void *)nv12Data, 0, size * sizeof(unsigned char));
     d_nv12 = d_srcNv12;
     for (int i = 0; i < batch; i++) {
         ofstream nv12File(filename, ostream::out | ostream::binary);
 
-        cudaMemcpy((void *)nv12Data, (void *)d_nv12, size * sizeof(unsigned short), cudaMemcpyDeviceToHost);
+        cudaMemcpy((void *)nv12Data, (void *)d_nv12, size * sizeof(unsigned char), cudaMemcpyDeviceToHost);
         if (nv12File) {
-            nv12File.write((char *)nv12Data, size * sizeof(unsigned short));
+            nv12File.write((char *)nv12Data, size * sizeof(unsigned char));
             nv12File.close();
         }
         d_nv12 += width * height;
@@ -288,11 +237,71 @@ void dumpYUV(unsigned char *d_srcNv12, int width, int height, int batch, char *f
 }
 
 /*
+  Jpeg encoder
+*/
+int encode_images(unsigned short *d_inputV210, int width, int height, int batch, int dstWidth, int dstHeight, int *lookupTable_cuda, cudaStream_t stream) {
+    size_t length = 0;
+
+    // initialize nvjpeg structures
+    checkCudaErrors(nvjpegCreateSimple(&en_params.nv_handle));
+    checkCudaErrors(nvjpegEncoderStateCreate(en_params.nv_handle, &en_params.nv_enc_state, stream));
+    checkCudaErrors(nvjpegEncoderParamsCreate(en_params.nv_handle, &en_params.nv_enc_params, stream));
+
+    // Set encode parameters
+    //checkCudaErrors(nvjpegEncoderParamsSetQuality(en_params.nv_enc_params, 70, stream));
+    //checkCudaErrors(nvjpegEncoderParamsSetOptimizedHuffman(en_params.nv_enc_params, 0, stream));
+    checkCudaErrors(nvjpegEncoderParamsSetSamplingFactors(en_params.nv_enc_params, NVJPEG_CSS_444, stream));
+    en_params.nv_image.pitch[0] = dstWidth * RGB_SIZE * sizeof(unsigned char);
+    checkCudaErrors(cudaMalloc(&en_params.t, dstWidth * dstHeight * YUV422_PLANAR_SIZE * sizeof(unsigned short)));
+    //checkCudaErrors(cudaMalloc(&en_params.t, width * height * RGB_SIZE * sizeof(unsigned char)));
+    checkCudaErrors(cudaMalloc(&en_params.nv_image.channel[0], dstWidth * dstHeight * RGB_SIZE * sizeof(unsigned char)));
+
+    resizeBatch(d_inputV210, width, height, en_params.t, dstWidth, dstHeight, batch, stream);
+    convertToRGB(en_params.t, en_params.nv_image.channel[0], dstWidth, dstHeight, batch, lookupTable_cuda, PLANAR, stream);
+    //convertToRGB(d_inputV210, en_params.t, width, height, batch, lookupTable_cuda, PACKED, stream);
+    //resizeBatch(en_params.t, width, height, en_params.nv_image.channel[0], dstWidth, dstHeight, batch, stream);
+
+    // Compress image
+    checkCudaErrors(nvjpegEncodeImage(en_params.nv_handle, en_params.nv_enc_state, en_params.nv_enc_params,
+        &en_params.nv_image, NVJPEG_INPUT_RGBI, dstWidth, dstHeight, stream));
+    //checkCudaErrors(nvjpegEncodeYUV(en_params.nv_handle, en_params.nv_enc_state, en_params.nv_enc_params,
+    //    &en_params.nv_image, NVJPEG_CSS_422, width, height, stream));
+    checkCudaErrors(cudaStreamSynchronize(stream));
+    // get compressed stream size
+
+    checkCudaErrors(
+      nvjpegEncodeRetrieveBitstream(en_params.nv_handle, en_params.nv_enc_state, NULL, &length, stream));
+
+    // get stream itself
+    checkCudaErrors(cudaStreamSynchronize(stream));
+    vector<unsigned char> jpeg(length);
+    checkCudaErrors(
+    nvjpegEncodeRetrieveBitstream(en_params.nv_handle, en_params.nv_enc_state, jpeg.data(), &length, stream));
+
+    // write stream to file
+    checkCudaErrors(cudaStreamSynchronize(stream));
+    ofstream output_file("test.jpg", ios::out | ios::binary);
+    output_file.write((char *)jpeg.data(), length);
+    output_file.close();
+    dumpYUV(en_params.nv_image.channel[0], dstWidth, dstHeight, batch, "r.rgb", stream);
+    checkCudaErrors(cudaFree(en_params.nv_image.channel[0]));
+    checkCudaErrors(nvjpegDestroy(en_params.nv_handle));
+    checkCudaErrors(nvjpegEncoderStateDestroy(en_params.nv_enc_state));
+    checkCudaErrors(nvjpegEncoderParamsDestroy(en_params.nv_enc_params));
+    return EXIT_SUCCESS;
+}
+
+/*
   Convert v210 to p010
 */
 void v210ToP010(unsigned short *d_inputV210, char *argv) {
     //unsigned short *d_outputYUV422;
     int size = 0, block_size = 0;
+    int *lookupTable, *lookupTable_cuda;
+    lookupTable = (int *)malloc(sizeof(int) * 1024);
+    checkCudaErrors(cudaMalloc((void**)&lookupTable_cuda, sizeof(int) * 1024));
+    lookupTableF(lookupTable);
+    cudaMemcpy(lookupTable_cuda, lookupTable, sizeof(int) * 1024, cudaMemcpyHostToDevice);
 
     size = g_ctx.ctx_pitch * g_ctx.height * g_ctx.batch;
     //checkCudaErrors(cudaMalloc((void **)&d_outputYUV422, size * RGB_SIZE * sizeof(unsigned short)));
@@ -307,10 +316,10 @@ void v210ToP010(unsigned short *d_inputV210, char *argv) {
     // convert to p010
     cudaEventRecord(start, 0);
     for (int i = 0; i < TEST_LOOP; i++) {
-        //convertToP010(d_inputV210, g_ctx.ctx_pitch, d_outputYUV422,
+        //convertToP010(d_inputV210, d_outputYUV422,
         //  g_ctx.ctx_pitch, g_ctx.height, g_ctx.batch, block_size, 0);
-        encode_images(d_inputV210, g_ctx.ctx_pitch, g_ctx.height, g_ctx.batch, g_ctx.dst_width, g_ctx.dst_height, stream);
-        //convertToRGB(d_inputV210, g_ctx.ctx_pitch, d_outputYUV422,
+        encode_images(d_inputV210, g_ctx.ctx_pitch, g_ctx.height, g_ctx.batch, g_ctx.dst_width, g_ctx.dst_height, lookupTable_cuda, stream);
+        //convertToRGB(d_inputV210, d_outputYUV422,
         //    g_ctx.ctx_pitch, g_ctx.height, g_ctx.batch, block_size, 0);
     }
     checkCudaErrors(cudaEventRecord(stop, 0));
@@ -330,6 +339,8 @@ void v210ToP010(unsigned short *d_inputV210, char *argv) {
     checkCudaErrors(cudaEventDestroy(stop));
     checkCudaErrors(cudaStreamDestroy(stream));
     //checkCudaErrors(cudaFree(d_outputYUV422));
+    checkCudaErrors(cudaFree(lookupTable_cuda));
+    free(lookupTable);
 }
 
 int convert(int argc, char* argv[]) {
