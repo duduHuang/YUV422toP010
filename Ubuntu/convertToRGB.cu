@@ -181,7 +181,6 @@ __global__ static void convertPToRGBKernel(const uint16_t *dpSrc, uint8_t *tt1,
         j = tidd * nDstWidth / 2 + nDstHeight * nDstWidth * 3 / 2;
         v0 = (uint32_t)dpSrc[j + k + 0];
 
-
         k = tid * 6;
         j = tidd * nDstWidth * 3;
         int r = 1596 * v0 - 891648, g = 813 * v0 + 392 * u0 - 542464, b = 2017 * u0 - 1107200;
