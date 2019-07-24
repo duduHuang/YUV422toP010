@@ -305,10 +305,10 @@ Convert: convertToP010.o convertToRGB.o resize.o convert.o main.o
 	$(EXEC) $(NVCC) $(ALL_LDFLAGS) $(GENCODE_FLAGS) ./libdpx/libdpx.a -o $@ $+ $(LIBRARIES)
 
 run: build
-	$(EXEC) ./Convert v210.yuv r.rgb
+	$(EXEC) ./Convert v210.yuv r.jpg
 
 clean:
-	rm -f Convert main.o convert.o convertToRGB.o resize.o convertToP010.o r.rgb ddppxx.dpx test.jpg
+	rm -f Convert main.o convert.o convertToRGB.o resize.o convertToP010.o r.jpg
 	rm -rf ../../bin/$(TARGET_ARCH)/$(TARGET_OS)/$(BUILD_TYPE)/Convert
 
 clobber: clean

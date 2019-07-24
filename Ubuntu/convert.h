@@ -15,6 +15,7 @@
 #include <fstream>
 #include <iostream>
 #include <memory>
+#include <string>
 
 using namespace std;
 
@@ -41,8 +42,8 @@ typedef struct _encode_params_t {
 	nvjpegImage_t nv_image;
 	nvjpegStatus_t err;
 
-	unsigned short *t;
-	//unsigned char *t;
+	unsigned short *t_16;
+	unsigned char *t_8;
 } encode_params_t;
 
 int convert(int argc, char* argv[]);
