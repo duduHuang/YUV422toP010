@@ -9,7 +9,7 @@ using namespace dpx;
 nv210_to_p010_context_t g_ctx;
 
 int parseCmdLine(int argc, char *argv[]) {
-    int n = 0;
+    int w = 0, h = 0;
     memset(&g_ctx, 0, sizeof(g_ctx));
     if (argc == 3) {
         // Run using default arguments
@@ -21,10 +21,13 @@ int parseCmdLine(int argc, char *argv[]) {
         g_ctx.width = 7680;
         g_ctx.height = 4320;
         g_ctx.batch = 1;
-        cout << "Down sampling: ";
-        cin >> n;
-        g_ctx.dst_width = 7680 / n;
-        g_ctx.dst_height = 4320 / n;
+        cout << "Output resolution: (7680 4320)\n"
+             << "                   (3840 2160)\n"
+             << "                   (1920 1080)\n"
+             << "                   (1280 720) ";
+        cin >> w >> h;
+        g_ctx.dst_width = w;
+        g_ctx.dst_height = h;
     }
     g_ctx.device = findCudaDevice(argc, (const char **)argv);
     if (g_ctx.width == 0 || g_ctx.height == 0 || !g_ctx.input_v210_file) {
