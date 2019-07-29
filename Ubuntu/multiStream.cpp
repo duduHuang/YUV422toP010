@@ -9,7 +9,7 @@ using namespace dpx;
 int parseCmdLine(int argc, char *argv[], nv210_context_t *g_ctx) {
     int w = 7680, h = 4320;
     string s;
-    //if (argc == 3) {
+    if (argc == 3) {
         // Run using default arguments
         g_ctx->input_v210_file = "v210.yuv";
         if (g_ctx->input_v210_file == NULL) {
@@ -17,6 +17,7 @@ int parseCmdLine(int argc, char *argv[], nv210_context_t *g_ctx) {
             return -1;
         }
         g_ctx->width = 7680;
+		g_ctx->ctx_pitch = (7680 + 47) / 48 * 128 / 2;
         g_ctx->height = 4320;
         g_ctx->batch = 1;
         cout << "Output resolution: (7680 4320)\n"
@@ -30,7 +31,7 @@ int parseCmdLine(int argc, char *argv[], nv210_context_t *g_ctx) {
         }
         g_ctx->dst_width = w;
         g_ctx->dst_height = h;
-    //}
+    }
     g_ctx->device = findCudaDevice(argc, (const char **)argv);
     if (g_ctx->width == 0 || g_ctx->height == 0 || !g_ctx->input_v210_file) {
         cout << "Usage: " << argv[0] << " inputf outputf\n";
@@ -130,7 +131,7 @@ void multiStream(unsigned short *d_src, char *argv, nv210_context_t *g_ctx, int 
     int eventflags = ((device_sync_method == cudaDeviceBlockingSync) ? cudaEventBlockingSync : cudaEventDefault);
     checkCudaErrors(cudaEventCreateWithFlags(&start_event, eventflags));
     checkCudaErrors(cudaEventCreateWithFlags(&stop_event, eventflags));
-    v210Size = g_ctx->width * g_ctx->height * 4 / 3;
+    v210Size = g_ctx->ctx_pitch * g_ctx->height;
     p210Size = g_ctx->width * g_ctx->height * YUV422_PLANAR_SIZE;
     byteChunkSize = (v210Size * sizeof(unsigned short)) / nStreams;
     p210ByteChunkSize = (p210Size * sizeof(unsigned short)) / nStreams;
@@ -142,7 +143,7 @@ void multiStream(unsigned short *d_src, char *argv, nv210_context_t *g_ctx, int 
     checkCudaErrors(cudaMalloc((void **)&dP210Device, p210Size * sizeof(unsigned short))); // pointers to data in the device memory
     checkCudaErrors(cudaEventRecord(start_event, 0));
     checkCudaErrors(cudaMemcpyAsync(dV210Device, d_src, v210Size * sizeof(unsigned short), cudaMemcpyHostToDevice, streams[0]));
-    convertToP210(dV210Device, dP210Device, g_ctx->width, g_ctx->height, streams[0]);
+    convertToP210(dV210Device, dP210Device, g_ctx->ctx_pitch, g_ctx->width, g_ctx->height, streams[0]);
     checkCudaErrors(cudaMemcpyAsync(dP210, dP210Device, p210Size * sizeof(unsigned short)   , cudaMemcpyDeviceToHost, streams[0]));
     checkCudaErrors(cudaEventRecord(stop_event, 0));
     checkCudaErrors(cudaEventSynchronize(stop_event));
@@ -158,7 +159,7 @@ void multiStream(unsigned short *d_src, char *argv, nv210_context_t *g_ctx, int 
         p210ByteOffset = p210Size * i / nStreams;
         checkCudaErrors(cudaMemcpyAsync(dV210Device + byteOffset, d_src + byteOffset,
             byteChunkSize, cudaMemcpyHostToDevice, streams[i]));
-        convertToP210(dV210Device + byteOffset, dP210Device + p210ByteOffset,
+        convertToP210(dV210Device + byteOffset, dP210Device + p210ByteOffset, g_ctx->ctx_pitch,
             g_ctx->width, g_ctx->height / nStreams, streams[i]);
         checkCudaErrors(cudaMemcpyAsync(dP210 + p210ByteOffset, dP210Device + p210ByteOffset,
             p210ByteChunkSize, cudaMemcpyDeviceToHost, streams[i]));
@@ -195,7 +196,7 @@ int multiStream(int argc, char* argv[]) {
     if (parseCmdLine(argc, argv, g_ctx) < 0) {
         return EXIT_FAILURE;
     }
-    v210Size = g_ctx->width * g_ctx->height * 4 / 3;
+    v210Size = g_ctx->ctx_pitch * g_ctx->height;
     // Allocate Host memory (could be using cudaMallocHost or VirtualAlloc/mmap if using the new CUDA 4.0 features
     AllocateHostMemory(bPinGenericMemory, &srcV210, &srcAligned_V210, v210Size * sizeof(unsigned short));
     // Load v210 yuv data into d_inputV210.

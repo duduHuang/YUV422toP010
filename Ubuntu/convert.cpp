@@ -1,5 +1,5 @@
 #include "convert.h"
-#include "convertToP010.h"
+#include "convertToP210.h"
 #include "convertToRGB.h"
 #include "libdpx/DPX.h"
 #include "resize.h"
@@ -54,7 +54,7 @@ static int loadV210Frame(unsigned short *d_inputV210) {
         return -1;
     }
 
-    frameSize = g_ctx.ctx_pitch * g_ctx.height * 4 / 3;
+    frameSize = g_ctx.ctx_pitch * g_ctx.height;
 
 #if USE_UVM_MEM
     pV210FrameData = d_inputV210;
@@ -98,7 +98,7 @@ void lookupTableF(int *lookupTable) {
 /*
   DPX header
 */
-int dpxHandler(unsigned short *src, int width, int height, int batch, string s, int coloer_space) {
+void dpxHandler(unsigned short *src, int width, int height, int batch, string s, int coloer_space) {
     unsigned short *nv12Data, *d_nv12;
     int size = 0;
     OutStream img;
@@ -111,7 +111,7 @@ int dpxHandler(unsigned short *src, int width, int height, int batch, string s, 
     nv12Data = (unsigned short *)malloc(size * sizeof(unsigned short));
     if (nv12Data == NULL) {
         cerr << "Failed to allcoate memory\n";
-        return EXIT_FAILURE;
+        return;
     }
     memset((void *)nv12Data, 0, size * sizeof(unsigned short));
     d_nv12 = src;
@@ -119,7 +119,7 @@ int dpxHandler(unsigned short *src, int width, int height, int batch, string s, 
 
     if (!img.Open(fileName)) {
         cout << "Unable to open file " << fileName << endl;
-        return EXIT_FAILURE;
+        return;
     }
     writerf.header.Reset();
     writerf.SetOutStream(&img);
@@ -180,17 +180,16 @@ int dpxHandler(unsigned short *src, int width, int height, int batch, string s, 
     writerf.header.SetCreationTimeDate("2019:07:05:15:30:00");
     writerf.header.SetImageOrientation(kLeftToRightTopToBottom);
     writerf.header.SetLinesPerElement(g_ctx.height);
-    writerf.header.SetPixelsPerLine(g_ctx.ctx_pitch);
+    writerf.header.SetPixelsPerLine(g_ctx.width);
     writerf.WriteHeader();
     writerf.WriteElement(0, (void *)nv12Data);
     writerf.Finish();
 
     img.Close();
     free(nv12Data);
-    return EXIT_SUCCESS;
 }
 
-int dpxHandler(unsigned char *src, int width, int height, int batch, string s, int coloer_space) {
+void dpxHandler(unsigned char *src, int width, int height, int batch, string s, int coloer_space) {
     unsigned char *nv12Data, *d_nv12;
     int size = 0;
     OutStream img;
@@ -203,7 +202,7 @@ int dpxHandler(unsigned char *src, int width, int height, int batch, string s, i
     nv12Data = (unsigned char *)malloc(size * sizeof(unsigned char));
     if (nv12Data == NULL) {
         cerr << "Failed to allcoate memory\n";
-        return EXIT_FAILURE;
+        return;
     }
     memset((void *)nv12Data, 0, size * sizeof(unsigned char));
     d_nv12 = src;
@@ -211,7 +210,7 @@ int dpxHandler(unsigned char *src, int width, int height, int batch, string s, i
 
     if (!img.Open(fileName)) {
         cout << "Unable to open file " << fileName << endl;
-        return EXIT_FAILURE;
+        return;
     }
     writerf.header.Reset();
     writerf.SetOutStream(&img);
@@ -272,14 +271,13 @@ int dpxHandler(unsigned char *src, int width, int height, int batch, string s, i
     writerf.header.SetCreationTimeDate("2019:07:05:15:30:00");
     writerf.header.SetImageOrientation(kLeftToRightTopToBottom);
     writerf.header.SetLinesPerElement(g_ctx.height);
-    writerf.header.SetPixelsPerLine(g_ctx.ctx_pitch);
+    writerf.header.SetPixelsPerLine(g_ctx.width);
     writerf.WriteHeader();
     writerf.WriteElement(0, (void *)nv12Data);
     writerf.Finish();
 
     img.Close();
     free(nv12Data);
-    return EXIT_SUCCESS;
 }
 
 /*
@@ -349,6 +347,7 @@ int encode_images(unsigned short *d_inputV210, char *filename, int width, int he
     checkCudaErrors(cudaEventCreate(&start));
     checkCudaErrors(cudaEventCreate(&stop));
     float elapsedTime = 0.0f;
+    int rowByte = (width + 47) / 48 * 128 / 2;
 
     // initialize nvjpeg structures
     checkCudaErrors(nvjpegCreateSimple(&en_params.nv_handle));
@@ -365,7 +364,7 @@ int encode_images(unsigned short *d_inputV210, char *filename, int width, int he
         checkCudaErrors(cudaMalloc(&en_params.nv_image.channel[0], dstWidth * dstHeight * RGB_SIZE * sizeof(unsigned char)));
         checkCudaErrors(cudaMalloc(&en_params.t_8, width * height * RGB_SIZE * sizeof(unsigned char)));
         cudaEventRecord(start, 0);
-        convertToRGB(d_inputV210, en_params.t_8, width, height, batch, lookupTable_cuda, PACKED, stream);
+        convertToRGB(d_inputV210, en_params.t_8, rowByte, width, height, batch, lookupTable_cuda, PACKED, stream);
         resizeBatch(en_params.t_8, width, height, en_params.nv_image.channel[0], dstWidth, dstHeight, batch, stream);
         checkCudaErrors(nvjpegEncodeImage(en_params.nv_handle, en_params.nv_enc_state, en_params.nv_enc_params,
             &en_params.nv_image, NVJPEG_INPUT_RGBI, dstWidth, dstHeight, stream));
@@ -374,8 +373,8 @@ int encode_images(unsigned short *d_inputV210, char *filename, int width, int he
         checkCudaErrors(cudaMalloc((void **)&en_params.t_16, dstWidth * dstHeight * YUV422_PLANAR_SIZE * sizeof(unsigned short)));
         checkCudaErrors(cudaMalloc(&en_params.nv_image.channel[0], dstWidth * dstHeight * RGB_SIZE * sizeof(unsigned char)));
         cudaEventRecord(start, 0);
-        resizeBatch(d_inputV210, width, height, en_params.t_16, dstWidth, dstHeight, batch, stream);
-        convertToRGB(en_params.t_16, en_params.nv_image.channel[0], dstWidth, dstHeight, batch, lookupTable_cuda, PLANAR, stream);
+        resizeBatch(d_inputV210, rowByte, height, en_params.t_16, dstWidth, dstHeight, batch, stream);
+        convertToRGB(en_params.t_16, en_params.nv_image.channel[0], dstWidth, dstWidth, dstHeight, batch, lookupTable_cuda, PLANAR, stream);
         checkCudaErrors(nvjpegEncodeImage(en_params.nv_handle, en_params.nv_enc_state, en_params.nv_enc_params,
             &en_params.nv_image, NVJPEG_INPUT_RGBI, dstWidth, dstHeight, stream));
     } else if (n == 3) {
@@ -386,7 +385,7 @@ int encode_images(unsigned short *d_inputV210, char *filename, int width, int he
         checkCudaErrors(cudaMalloc(&en_params.nv_image.channel[1], dstWidth * dstHeight / 2 * sizeof(unsigned char)));
         checkCudaErrors(cudaMalloc(&en_params.nv_image.channel[2], dstWidth * dstHeight / 2 * sizeof(unsigned char)));
         cudaEventRecord(start, 0);
-        resizeBatch(d_inputV210, width, height,
+        resizeBatch(d_inputV210, rowByte, height,
             en_params.nv_image.channel[0], en_params.nv_image.channel[1], en_params.nv_image.channel[2],
             dstWidth, dstHeight, batch, lookupTable_cuda, stream);
         checkCudaErrors(nvjpegEncodeYUV(en_params.nv_handle, en_params.nv_enc_state, en_params.nv_enc_params,
@@ -415,6 +414,7 @@ int encode_images(unsigned short *d_inputV210, char *filename, int width, int he
         << "average time: " << (elapsedTime / (TEST_LOOP * 1.0f)) << "ms"
         << " ==> " << (elapsedTime / (TEST_LOOP * 1.0f)) / batch << " ms/frame\n";
     c = 'n';
+    s_cin.clear();
     cout << "Write the dpx file ? (y/N) ";
     getline(cin, s_cin);
     if (!s_cin.empty()) {
@@ -432,6 +432,7 @@ int encode_images(unsigned short *d_inputV210, char *filename, int width, int he
         }
     }
     c = 'n';
+    s_cin.clear();
     cout << "Write the row file ? (y/N) ";
     getline(cin, s_cin);
     if (!s_cin.empty()) {
@@ -475,7 +476,7 @@ void v210ToP010(unsigned short *d_inputV210, char *argv) {
     int *lookupTable, *lookupTable_cuda;
     char c = 'y';
     string s_cin;
-    size = g_ctx.ctx_pitch * g_ctx.height * g_ctx.batch;
+    size = g_ctx.width * g_ctx.height * g_ctx.batch;
     cudaStream_t stream;
     checkCudaErrors(cudaStreamCreate(&stream));
     // create cuda event handles
@@ -485,6 +486,7 @@ void v210ToP010(unsigned short *d_inputV210, char *argv) {
     float elapsedTime = 0.0f;
 
     c ='y';
+    s_cin.clear();
     cout << "Initial look up table ? (Y/n) ";
     getline(cin, s_cin);
     if (!s_cin.empty()) {
@@ -503,6 +505,7 @@ void v210ToP010(unsigned short *d_inputV210, char *argv) {
         cudaMemcpy(lookupTable_cuda, lookupTable, sizeof(int) * 1024, cudaMemcpyHostToDevice);
     }
     n = 3;
+    s_cin.clear();
     cout << "Convert to 1. P210\n"
          << "           2. RGB\n"
          << "           3. nvJPEG ? (1, 2, (default) 3) ";
@@ -515,26 +518,33 @@ void v210ToP010(unsigned short *d_inputV210, char *argv) {
         checkCudaErrors(cudaMalloc((void **)&d_outputYUV422, size * YUV422_PLANAR_SIZE * sizeof(unsigned short)));
         cudaEventRecord(start, 0);
         for (int i = 0; i < TEST_LOOP; i++) {
-            convertToP010(d_inputV210, d_outputYUV422, g_ctx.ctx_pitch, g_ctx.height, g_ctx.batch, stream);
+            convertToP210(d_inputV210, d_outputYUV422, g_ctx.ctx_pitch, g_ctx.width, g_ctx.height, stream);
         }
     } else if (n == 2) {
-        cout << "10 bit to 8 bit ? (y/n) ";
-        cin >> c;
+        cout << "10 bit to 8 bit ? (y/N) ";
+        c = 'n';
+        s_cin.clear();
+        getline(cin, s_cin);
+        if (!s_cin.empty()) {
+            istringstream ss(s_cin);
+            ss >> c;
+        }
         if (c == 'y') {
             checkCudaErrors(cudaMalloc((void **)&d_outputRGB8, size * RGB_SIZE * sizeof(unsigned char)));
             cudaEventRecord(start, 0);
             for (int i = 0; i < TEST_LOOP; i++) {
-                convertToRGB(d_inputV210, d_outputRGB8, g_ctx.ctx_pitch, g_ctx.height, g_ctx.batch, lookupTable_cuda, stream);
+                convertToRGB(d_inputV210, d_outputRGB8, g_ctx.ctx_pitch, g_ctx.width, g_ctx.height, g_ctx.batch, lookupTable_cuda, stream);
             }
         } else if (c == 'n') {
             checkCudaErrors(cudaMalloc((void **)&d_outputRGB10, size * RGB_SIZE * sizeof(unsigned short)));
             cudaEventRecord(start, 0);
             for (int i = 0; i < TEST_LOOP; i++) {
-                convertToRGB(d_inputV210, d_outputRGB10, g_ctx.ctx_pitch, g_ctx.height, g_ctx.batch, stream);
+                convertToRGB(d_inputV210, d_outputRGB10, g_ctx.ctx_pitch, g_ctx.width, g_ctx.height, g_ctx.batch, stream);
             }
         }
     } else if (n == 3) {
         int nn = 3;
+        s_cin.clear();
         cout << "Convert flow : 1. v210 -> rgb (8 bit) -> resize -> nvjpg\n"
              << "               2. v210 -> resize -> rgb (8 bit) -> nvjpg\n"
              << "               3. v210 -> resize (8 bit) -> nvjpeg ? (1, 2 , (default) 3) ";
@@ -545,7 +555,7 @@ void v210ToP010(unsigned short *d_inputV210, char *argv) {
         }
         cudaEventRecord(start, 0);
         for (int i = 0; i < TEST_LOOP; i++) {
-            encode_images(d_inputV210, argv, g_ctx.ctx_pitch, g_ctx.height, g_ctx.batch, g_ctx.dst_width, g_ctx.dst_height, lookupTable_cuda, nn, stream);
+            encode_images(d_inputV210, argv, g_ctx.width, g_ctx.height, g_ctx.batch, g_ctx.dst_width, g_ctx.dst_height, lookupTable_cuda, nn, stream);
         }
     } else {
         cout << "Error number, bye bye.\n";
@@ -560,6 +570,7 @@ void v210ToP010(unsigned short *d_inputV210, char *argv) {
         << "average time: " << (elapsedTime / (TEST_LOOP * 1.0f)) << "ms"
         << " ==> " << (elapsedTime / (TEST_LOOP * 1.0f)) / g_ctx.batch << " ms/frame\n";
         c = 'n';
+        s_cin.clear();
         cout << "Write the dpx file ? (y/N) ";
         getline(cin, s_cin);
         if (!s_cin.empty()) {
@@ -570,9 +581,10 @@ void v210ToP010(unsigned short *d_inputV210, char *argv) {
             string s;
             cout << "File name : ";
             cin >> s;
-            dpxHandler(d_outputYUV422, g_ctx.ctx_pitch, g_ctx.height, g_ctx.batch, s, YUV422_PLANAR_SIZE);
+            dpxHandler(d_outputYUV422, g_ctx.width, g_ctx.height, g_ctx.batch, s, YUV422_PLANAR_SIZE);
         }
         c = 'n';
+        s_cin.clear();
         cout << "Write the row file ? (y/N) ";
         getline(cin, s_cin);
         if (!s_cin.empty()) {
@@ -583,7 +595,7 @@ void v210ToP010(unsigned short *d_inputV210, char *argv) {
             string s;
             cout << "File name: ";
             cin >> s;
-            dumpYUV(d_outputYUV422, g_ctx.ctx_pitch, g_ctx.height, g_ctx.batch, s, YUV422_PLANAR_SIZE, stream);
+            dumpYUV(d_outputYUV422, g_ctx.width, g_ctx.height, g_ctx.batch, s, YUV422_PLANAR_SIZE, stream);
         }
         checkCudaErrors(cudaFree(d_outputYUV422));
     } else if (n == 2) {
@@ -593,6 +605,7 @@ void v210ToP010(unsigned short *d_inputV210, char *argv) {
                 << "average time: " << (elapsedTime / (TEST_LOOP * 1.0f)) << "ms"
                 << " ==> " << (elapsedTime / (TEST_LOOP * 1.0f)) / g_ctx.batch << " ms/frame\n";
             c = 'n';
+            s_cin.clear();
             cout << "Write the dpx file ? (y/N) ";
             getline(cin, s_cin);
             if (!s_cin.empty()) {
@@ -603,9 +616,10 @@ void v210ToP010(unsigned short *d_inputV210, char *argv) {
                 string s;
                 cout << "File name : ";
                 cin >> s;
-                dpxHandler(d_outputRGB8, g_ctx.ctx_pitch, g_ctx.height, g_ctx.batch, s, RGB_SIZE);
+                dpxHandler(d_outputRGB8, g_ctx.width, g_ctx.height, g_ctx.batch, s, RGB_SIZE);
             }
             c = 'n';
+            s_cin.clear();
             cout << "Write the row file ? (y/N) ";
             getline(cin, s_cin);
             if (!s_cin.empty()) {
@@ -616,7 +630,7 @@ void v210ToP010(unsigned short *d_inputV210, char *argv) {
                 string s;
                 cout << "File name : ";
                 cin >> s;
-                dumpYUV(d_outputRGB8, g_ctx.ctx_pitch, g_ctx.height, g_ctx.batch, s, RGB_SIZE, stream);
+                dumpYUV(d_outputRGB8, g_ctx.width, g_ctx.height, g_ctx.batch, s, RGB_SIZE, stream);
             }
             checkCudaErrors(cudaFree(d_outputRGB8));
         } else if (c == 'n') {
@@ -625,6 +639,7 @@ void v210ToP010(unsigned short *d_inputV210, char *argv) {
                 << "average time: " << (elapsedTime / (TEST_LOOP * 1.0f)) << "ms"
                 << " ==> " << (elapsedTime / (TEST_LOOP * 1.0f)) / g_ctx.batch << " ms/frame\n";
             c = 'n';
+            s_cin.clear();
             cout << "Write the dpx file ? (y/N) ";
             getline(cin, s_cin);
             if (!s_cin.empty()) {
@@ -635,9 +650,10 @@ void v210ToP010(unsigned short *d_inputV210, char *argv) {
                 string s;
                 cout << "File name : ";
                 cin >> s;
-                dpxHandler(d_outputRGB10, g_ctx.ctx_pitch, g_ctx.height, g_ctx.batch, s, RGB_SIZE);
+                dpxHandler(d_outputRGB10, g_ctx.width, g_ctx.height, g_ctx.batch, s, RGB_SIZE);
             }
             c = 'n';
+            s_cin.clear();
             cout << "Write the row file ? (y/N) ";
             getline(cin, s_cin);
             if (!s_cin.empty()) {
@@ -648,7 +664,7 @@ void v210ToP010(unsigned short *d_inputV210, char *argv) {
                 string s;
                 cout << "File name : ";
                 cin >> s;
-                dumpYUV(d_outputRGB10, g_ctx.ctx_pitch, g_ctx.height, g_ctx.batch, s, RGB_SIZE, stream);
+                dumpYUV(d_outputRGB10, g_ctx.width, g_ctx.height, g_ctx.batch, s, RGB_SIZE, stream);
             }
             checkCudaErrors(cudaFree(d_outputRGB10));
         }
@@ -672,10 +688,10 @@ int convert(int argc, char* argv[]) {
     if (parseCmdLine(argc, argv) < 0) {
         return EXIT_FAILURE;
     }
-    g_ctx.ctx_pitch = g_ctx.width;
+    g_ctx.ctx_pitch = (g_ctx.width + 47) / 48 * 128 / 2;
     int ctx_alignment = 32;
     g_ctx.ctx_pitch += (g_ctx.ctx_pitch % ctx_alignment != 0) ? (ctx_alignment - g_ctx.ctx_pitch % ctx_alignment) : 0;
-    size = g_ctx.ctx_pitch * g_ctx.height * 4 / 3 * g_ctx.batch;
+    size = g_ctx.ctx_pitch * g_ctx.height * g_ctx.batch;
 
     // Load v210 yuv data into d_inputV210.
 #if USE_UVM_MEM

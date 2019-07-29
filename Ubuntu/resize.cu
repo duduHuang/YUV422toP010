@@ -44,7 +44,7 @@ __global__ static void resizeBatchKernel(const uint16_t *p_Src, int nSrcPitch, i
         int nDstH = nDstHeight;
         int nDstW = nDstWidth / 6;
         if (tid < nDstW && tidd < nDstH) {
-            int j = tidd * nSrcPitch * 4 / 3 * scale;
+            int j = tidd * nSrcPitch * scale;
             int k = tid * 32;
 
             pF.x = (uint32_t)p_Src[j + k + 0] + ((uint32_t)p_Src[j + k + 1] << 16);
@@ -98,7 +98,7 @@ __global__ static void resizeBatchKernel(const uint16_t *p_Src, int nSrcPitch, i
         int nDstH = nDstHeight;
         int nDstW = nDstWidth / 2;
         if (tid < nDstW && tidd < nDstH) {
-            int j = tidd * nSrcPitch * 4 / 3 * scale;
+            int j = tidd * nSrcPitch * scale;
             int k = tid * 16;
             pF.x = (uint32_t)p_Src[j + k + 0] + ((uint32_t)p_Src[j + k + 1] << 16);
 
@@ -125,7 +125,7 @@ __global__ static void resizeBatchKernel(const uint16_t *p_Src, int nSrcPitch, i
         int nDstH = nDstHeight;
         int nDstW = nDstWidth / 6;
         if (tid < nDstW && tidd < nDstH) {
-            int j = tidd * nSrcPitch * 4 / 3 * scale;
+            int j = tidd * nSrcPitch * scale;
             int k = tid * 16;
             pF.x = (uint32_t)p_Src[j + k + 0] + ((uint32_t)p_Src[j + k + 1] << 16);
             pF.y = ((uint32_t)p_Src[j + k + 3] << 16);
@@ -175,7 +175,7 @@ __global__ static void resizeBatchKernel(const uint16_t *p_Src, int nSrcPitch, i
 void resizeBatch(uint16_t *dpSrc, int nSrcPitch, int nSrcHeight, uint16_t *dpDst, int nDstWidth, int nDstHeight,
     int nBatch, cudaStream_t stram) {
     dim3 blocks(32, 16, 1);
-    dim3 grids((nSrcPitch + blocks.x - 1) / blocks.x, (((nSrcHeight * 4 / 3) + blocks.y) - 1) / blocks.y, 1);
+    dim3 grids((nSrcPitch + blocks.x - 1) / blocks.x, (nSrcHeight + blocks.y - 1) / blocks.y, 1);
     resizeBatchKernel << <grids, blocks, 0, stram >> > (dpSrc, nSrcPitch, nSrcHeight, dpDst, nDstWidth, nDstHeight, nBatch);
 }
 
@@ -190,7 +190,7 @@ __global__ static void resizeBatchKernel(const uint16_t *p_Src, int nSrcPitch, i
         int nDstH = nDstHeight;
         int nDstW = nDstWidth / 6;
         if (tid < nDstW && tidd < nDstH) {
-            int j = tidd * nSrcPitch * 4 / 3 * scale;
+            int j = tidd * nSrcPitch * scale;
             int k = tid * 32;
 
             pF.x = (uint32_t)p_Src[j + k + 0] + ((uint32_t)p_Src[j + k + 1] << 16);
@@ -243,7 +243,7 @@ __global__ static void resizeBatchKernel(const uint16_t *p_Src, int nSrcPitch, i
         int nDstH = nDstHeight;
         int nDstW = nDstWidth / 2;
         if (tid < nDstW && tidd < nDstH) {
-            int j = tidd * nSrcPitch * 4 / 3 * scale;
+            int j = tidd * nSrcPitch * scale;
             int k = tid * 16;
             pF.x = (uint32_t)p_Src[j + k + 0] + ((uint32_t)p_Src[j + k + 1] << 16);
 
@@ -269,7 +269,7 @@ __global__ static void resizeBatchKernel(const uint16_t *p_Src, int nSrcPitch, i
         int nDstH = nDstHeight;
         int nDstW = nDstWidth / 6;
         if (tid < nDstW && tidd < nDstH) {
-            int j = tidd * nSrcPitch * 4 / 3 * scale;
+            int j = tidd * nSrcPitch * scale;
             int k = tid * 16;
             pF.x = (uint32_t)p_Src[j + k + 0] + ((uint32_t)p_Src[j + k + 1] << 16);
             pF.y = ((uint32_t)p_Src[j + k + 3] << 16);
@@ -318,6 +318,6 @@ __global__ static void resizeBatchKernel(const uint16_t *p_Src, int nSrcPitch, i
 void resizeBatch(uint16_t *dpSrc, int nSrcPitch, int nSrcHeight, uint8_t *dpDst0, uint8_t *dpDst1, uint8_t *dpDst2,
     int nDstWidth, int nDstHeight, int nBatch, int *lookupTable_cuda, cudaStream_t stram) {
     dim3 blocks(32, 16, 1);
-    dim3 grids((nSrcPitch + blocks.x - 1) / blocks.x, (((nSrcHeight * 4 / 3) + blocks.y) - 1) / blocks.y, 1);
+    dim3 grids((nSrcPitch + blocks.x - 1) / blocks.x, (nSrcHeight + blocks.y - 1) / blocks.y, 1);
     resizeBatchKernel << <grids, blocks, 0, stram >> > (dpSrc, nSrcPitch, nSrcHeight, dpDst0, dpDst1, dpDst2, nDstWidth, nDstHeight, nBatch, lookupTable_cuda);
 }
