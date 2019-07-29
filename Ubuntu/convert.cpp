@@ -9,7 +9,8 @@ using namespace dpx;
 nv210_to_p010_context_t g_ctx;
 
 int parseCmdLine(int argc, char *argv[]) {
-    int w = 0, h = 0;
+    int w = 1280, h = 720;
+    string s;
     memset(&g_ctx, 0, sizeof(g_ctx));
     if (argc == 3) {
         // Run using default arguments
@@ -24,8 +25,12 @@ int parseCmdLine(int argc, char *argv[]) {
         cout << "Output resolution: (7680 4320)\n"
              << "                   (3840 2160)\n"
              << "                   (1920 1080)\n"
-             << "                   (1280 720) ";
-        cin >> w >> h;
+             << "                   default (1280 720) ";
+        getline(cin, s);
+        if (!s.empty()) {
+            istringstream ss(s);
+            ss >> w >> h;
+        }
         g_ctx.dst_width = w;
         g_ctx.dst_height = h;
     }
@@ -337,7 +342,8 @@ int encode_images(unsigned short *d_inputV210, char *filename, int width, int he
     int *lookupTable_cuda, int n, cudaStream_t stream) {
     encode_params_t en_params;
     size_t length = 0;
-    char c;
+    char c = 'n';
+    string s_cin;
     // create cuda event handles
     cudaEvent_t start, stop;
     checkCudaErrors(cudaEventCreate(&start));
@@ -408,8 +414,13 @@ int encode_images(unsigned short *d_inputV210, char *filename, int width, int he
         << dstWidth << "x" << dstHeight << "), "
         << "average time: " << (elapsedTime / (TEST_LOOP * 1.0f)) << "ms"
         << " ==> " << (elapsedTime / (TEST_LOOP * 1.0f)) / batch << " ms/frame\n";
-    cout << "Write the dpx file ? (y/n) ";
-    cin >> c;
+    c = 'n';
+    cout << "Write the dpx file ? (y/N) ";
+    getline(cin, s_cin);
+    if (!s_cin.empty()) {
+        istringstream ss(s_cin);
+        ss >> c;
+    }
     if (c == 'y') {
         string s;
         cout << "File name : ";
@@ -420,8 +431,13 @@ int encode_images(unsigned short *d_inputV210, char *filename, int width, int he
 
         }
     }
-    cout << "Write the row file ? (y/n) ";
-    cin >> c;
+    c = 'n';
+    cout << "Write the row file ? (y/N) ";
+    getline(cin, s_cin);
+    if (!s_cin.empty()) {
+        istringstream ss(s_cin);
+        ss >> c;
+    }
     if (c == 'y') {
         string s;
         cout << "File name : ";
@@ -455,9 +471,10 @@ int encode_images(unsigned short *d_inputV210, char *filename, int width, int he
 void v210ToP010(unsigned short *d_inputV210, char *argv) {
     unsigned short *d_outputYUV422, *d_outputRGB10;
     unsigned char *d_outputRGB8;
-    int size = 0, n = 0;
+    int size = 0, n = 3;
     int *lookupTable, *lookupTable_cuda;
-    char c = 'z';
+    char c = 'y';
+    string s_cin;
     size = g_ctx.ctx_pitch * g_ctx.height * g_ctx.batch;
     cudaStream_t stream;
     checkCudaErrors(cudaStreamCreate(&stream));
@@ -467,8 +484,13 @@ void v210ToP010(unsigned short *d_inputV210, char *argv) {
     checkCudaErrors(cudaEventCreate(&stop));
     float elapsedTime = 0.0f;
 
-    cout << "Initial look up table ? (y/n) ";
-    cin >> c;
+    c ='y';
+    cout << "Initial look up table ? (Y/n) ";
+    getline(cin, s_cin);
+    if (!s_cin.empty()) {
+        istringstream ss(s_cin);
+        ss >> c;
+    }
     if (c == 'y') {
         lookupTable = (int *)malloc(sizeof(int) * 1024);
         checkCudaErrors(cudaMalloc((void**)&lookupTable_cuda, sizeof(int) * 1024));
@@ -480,10 +502,15 @@ void v210ToP010(unsigned short *d_inputV210, char *argv) {
         memset((void *)lookupTable, 0, 1024 * sizeof(int));
         cudaMemcpy(lookupTable_cuda, lookupTable, sizeof(int) * 1024, cudaMemcpyHostToDevice);
     }
+    n = 3;
     cout << "Convert to 1. P210\n"
          << "           2. RGB\n"
-         << "           3. nvJPEG ? (1, 2, 3) ";
-    cin >> n;
+         << "           3. nvJPEG ? (1, 2, (default) 3) ";
+    getline(cin, s_cin);
+    if (!s_cin.empty()) {
+        istringstream ss(s_cin);
+        ss >> n;
+    }
     if (n == 1) {
         checkCudaErrors(cudaMalloc((void **)&d_outputYUV422, size * YUV422_PLANAR_SIZE * sizeof(unsigned short)));
         cudaEventRecord(start, 0);
@@ -507,11 +534,15 @@ void v210ToP010(unsigned short *d_inputV210, char *argv) {
             }
         }
     } else if (n == 3) {
-        int nn = 0;
+        int nn = 3;
         cout << "Convert flow : 1. v210 -> rgb (8 bit) -> resize -> nvjpg\n"
              << "               2. v210 -> resize -> rgb (8 bit) -> nvjpg\n"
-             << "               3. v210 -> resize (8 bit) -> nvjpeg ? (1, 2 ,3) ";
-        cin >> nn;
+             << "               3. v210 -> resize (8 bit) -> nvjpeg ? (1, 2 , (default) 3) ";
+        getline(cin, s_cin);
+        if (!s_cin.empty()) {
+            istringstream ss(s_cin);
+            ss >> nn;
+        }
         cudaEventRecord(start, 0);
         for (int i = 0; i < TEST_LOOP; i++) {
             encode_images(d_inputV210, argv, g_ctx.ctx_pitch, g_ctx.height, g_ctx.batch, g_ctx.dst_width, g_ctx.dst_height, lookupTable_cuda, nn, stream);
@@ -528,16 +559,26 @@ void v210ToP010(unsigned short *d_inputV210, char *argv) {
         << g_ctx.width << "x" << g_ctx.height << "), "
         << "average time: " << (elapsedTime / (TEST_LOOP * 1.0f)) << "ms"
         << " ==> " << (elapsedTime / (TEST_LOOP * 1.0f)) / g_ctx.batch << " ms/frame\n";
-        cout << "Write the dpx file ? (y/n) ";
-        cin >> c;
+        c = 'n';
+        cout << "Write the dpx file ? (y/N) ";
+        getline(cin, s_cin);
+        if (!s_cin.empty()) {
+            istringstream ss(s_cin);
+            ss >> c;
+        }
         if (c == 'y') {
             string s;
             cout << "File name : ";
             cin >> s;
             dpxHandler(d_outputYUV422, g_ctx.ctx_pitch, g_ctx.height, g_ctx.batch, s, YUV422_PLANAR_SIZE);
         }
-        cout << "Write the row file ? (y/n) ";
-        cin >> c;
+        c = 'n';
+        cout << "Write the row file ? (y/N) ";
+        getline(cin, s_cin);
+        if (!s_cin.empty()) {
+            istringstream ss(s_cin);
+            ss >> c;
+        }
         if (c == 'y') {
             string s;
             cout << "File name: ";
@@ -551,16 +592,26 @@ void v210ToP010(unsigned short *d_inputV210, char *argv) {
                 << g_ctx.width << "x" << g_ctx.height << "), "
                 << "average time: " << (elapsedTime / (TEST_LOOP * 1.0f)) << "ms"
                 << " ==> " << (elapsedTime / (TEST_LOOP * 1.0f)) / g_ctx.batch << " ms/frame\n";
-            cout << "Write the dpx file ? (y/n) ";
-            cin >> c;
+            c = 'n';
+            cout << "Write the dpx file ? (y/N) ";
+            getline(cin, s_cin);
+            if (!s_cin.empty()) {
+                istringstream ss(s_cin);
+                ss >> c;
+            }
             if (c == 'y') {
                 string s;
                 cout << "File name : ";
                 cin >> s;
                 dpxHandler(d_outputRGB8, g_ctx.ctx_pitch, g_ctx.height, g_ctx.batch, s, RGB_SIZE);
             }
-            cout << "Write the row file ? (y/n) ";
-            cin >> c;
+            c = 'n';
+            cout << "Write the row file ? (y/N) ";
+            getline(cin, s_cin);
+            if (!s_cin.empty()) {
+                istringstream ss(s_cin);
+                ss >> c;
+            }
             if (c == 'y') {
                 string s;
                 cout << "File name : ";
@@ -573,16 +624,26 @@ void v210ToP010(unsigned short *d_inputV210, char *argv) {
                 << g_ctx.width << "x" << g_ctx.height << "), "
                 << "average time: " << (elapsedTime / (TEST_LOOP * 1.0f)) << "ms"
                 << " ==> " << (elapsedTime / (TEST_LOOP * 1.0f)) / g_ctx.batch << " ms/frame\n";
-            cout << "Write the dpx file ? (y/n) ";
-            cin >> c;
+            c = 'n';
+            cout << "Write the dpx file ? (y/N) ";
+            getline(cin, s_cin);
+            if (!s_cin.empty()) {
+                istringstream ss(s_cin);
+                ss >> c;
+            }
             if (c == 'y') {
                 string s;
                 cout << "File name : ";
                 cin >> s;
                 dpxHandler(d_outputRGB10, g_ctx.ctx_pitch, g_ctx.height, g_ctx.batch, s, RGB_SIZE);
             }
-            cout << "Write the row file ? (y/n) ";
-            cin >> c;
+            c = 'n';
+            cout << "Write the row file ? (y/N) ";
+            getline(cin, s_cin);
+            if (!s_cin.empty()) {
+                istringstream ss(s_cin);
+                ss >> c;
+            }
             if (c == 'y') {
                 string s;
                 cout << "File name : ";

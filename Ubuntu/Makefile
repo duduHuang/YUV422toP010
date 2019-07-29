@@ -281,12 +281,12 @@ build: Convert
 
 check.deps:
 ifeq ($(SAMPLE_ENABLED),0)
-	@echo "Sample will be waived due to the above missing dependencies"
+    @echo "Sample will be waived due to the above missing dependencies"
 else
 	@echo "Sample is ready - all dependencies have been met"
 endif
 
-convertToP010.o:convertToP010.cu
+convertToP210.o:convertToP210.cu
 	$(EXEC) $(NVCC) $(INCLUDES) $(ALL_CCFLAGS) $(GENCODE_FLAGS) -o $@ -c $<
 
 convertToRGB.o:convertToRGB.cu
@@ -298,17 +298,20 @@ resize.o:resize.cu
 convert.o:convert.cpp
 	$(EXEC) $(NVCC) $(INCLUDES) $(ALL_CCFLAGS) $(GENCODE_FLAGS) -o $@ -c $<
 
+multiStream.o:multiStream.cpp
+	$(EXEC) $(NVCC) $(INCLUDES) $(ALL_CCFLAGS) $(GENCODE_FLAGS) -o $@ -c $<
+
 main.o:main.cpp
 	$(EXEC) $(NVCC) $(INCLUDES) $(ALL_CCFLAGS) $(GENCODE_FLAGS) -o $@ -c $<
 
-Convert: convertToP010.o convertToRGB.o resize.o convert.o main.o
+Convert: convertToP210.o convertToRGB.o resize.o convert.o multiStream.o main.o
 	$(EXEC) $(NVCC) $(ALL_LDFLAGS) $(GENCODE_FLAGS) ./libdpx/libdpx.a -o $@ $+ $(LIBRARIES)
 
 run: build
 	$(EXEC) ./Convert v210.yuv r.jpg
 
 clean:
-	rm -f Convert main.o convert.o convertToRGB.o resize.o convertToP010.o r.jpg
+	rm -f Convert main.o multiStream.o convert.o convertToRGB.o resize.o convertToP210.o r.jpg
 	rm -rf ../../bin/$(TARGET_ARCH)/$(TARGET_OS)/$(BUILD_TYPE)/Convert
 
 clobber: clean

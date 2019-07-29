@@ -23,10 +23,11 @@
     <ClCompile Include="libdpx\TestFunc.cpp" />
     <ClCompile Include="libdpx\Writer.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="multiStream.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="convert.h" />
-    <ClInclude Include="convertToP010.h" />
+    <ClInclude Include="convertToP210.h" />
     <ClInclude Include="convertToRGB.h" />
     <ClInclude Include="libdpx\BaseTypeConverter.h" />
     <ClInclude Include="libdpx\Codec.h" />
@@ -40,13 +41,14 @@
     <ClInclude Include="libdpx\TestFunc.h" />
     <ClInclude Include="libdpx\WriterInternal.h" />
     <ClInclude Include="lookupTableF.h" />
+    <ClInclude Include="multiStream.h" />
     <ClInclude Include="resize.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="libdpx\Makefile.am" />
   </ItemGroup>
   <ItemGroup>
-    <CudaCompile Include="convertToP010.cu" />
+    <CudaCompile Include="convertToP210.cu" />
     <CudaCompile Include="convertToRGB.cu" />
     <CudaCompile Include="lookupTableF.cu" />
     <CudaCompile Include="resize.cu" />

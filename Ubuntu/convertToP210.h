@@ -1,5 +1,5 @@
-#ifndef __H_CONVERTTOP010__
-#define __H_CONVERTTOP010__
+#ifndef __H_CONVERTTOP210__
+#define __H_CONVERTTOP210__
 
 #include <iostream>
 #include <helper_cuda.h>
@@ -11,4 +11,6 @@ extern "C"
 void convertToP010(uint16_t *dpSrc, uint16_t *dpDst, int nDstWidth, int nDstHeight,
 	int nBatch, cudaStream_t stram = 0);
 
-#endif // !__H_CONVERTTOP010__
+void convertToP210(uint16_t *dpSrc, uint16_t *dpDst, int nWidth, int nHeight, cudaStream_t stream = 0);
+
+#endif // !__H_CONVERTTOP210__

@@ -1,11 +1,12 @@
 #include <iostream>
-#include "convert.h"
+//#include "convert.h"
 
 using namespace std;
 
+int multiStream(int, char *[]);
+
 int main(int argc, char* argv[]) {
 
-    convert(argc, argv);
-	
-	return 0;
+    //convert(argc, argv);
+	return multiStream(argc, argv);
 }

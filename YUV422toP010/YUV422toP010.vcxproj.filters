@@ -33,6 +33,7 @@
     </ClCompile>
     <ClCompile Include="convert.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="multiStream.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="libdpx\BaseTypeConverter.h">
@@ -69,10 +70,11 @@
       <Filter>libdpx</Filter>
     </ClInclude>
     <ClInclude Include="convert.h" />
-    <ClInclude Include="convertToP010.h" />
     <ClInclude Include="convertToRGB.h" />
     <ClInclude Include="lookupTableF.h" />
     <ClInclude Include="resize.h" />
+    <ClInclude Include="multiStream.h" />
+    <ClInclude Include="convertToP210.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="libdpx">
@@ -85,9 +87,9 @@
     </None>
   </ItemGroup>
   <ItemGroup>
-    <CudaCompile Include="convertToP010.cu" />
     <CudaCompile Include="convertToRGB.cu" />
     <CudaCompile Include="lookupTableF.cu" />
     <CudaCompile Include="resize.cu" />
+    <CudaCompile Include="convertToP210.cu" />
   </ItemGroup>
 </Project>
