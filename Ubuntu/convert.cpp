@@ -8,6 +8,25 @@ using namespace dpx;
 
 nv210_to_p010_context_t g_ctx;
 
+bool isGPUEnable() {
+    cout << "\n CUDA Device Query (Runtime API) version (CUDART static linking)\n\n";
+    int deviceCount = 0;
+    cudaError_t error_id = cudaGetDeviceCount(&deviceCount);
+    if (error_id != cudaSuccess) {
+        printf("cudaGetDeviceCount returned %d\n-> %s\n", static_cast<int>(error_id), cudaGetErrorString(error_id));
+        cout << "Result = FAIL\n\n";
+        return false;
+    }
+    // This function call returns 0 if there are no CUDA capable devices.
+    if (deviceCount == 0) {
+        cout << "There are no available device(s) that support CUDA\n\n";
+        return false;
+    } else {
+        cout << "Detected " << deviceCount << " CUDA Capable device(s)\n\n";
+        return true;
+    }
+}
+
 int parseCmdLine(int argc, char *argv[]) {
     int w = 1280, h = 720;
     string s;
@@ -34,6 +53,7 @@ int parseCmdLine(int argc, char *argv[]) {
         g_ctx.dst_width = w;
         g_ctx.dst_height = h;
     }
+    cout << "\n";
     g_ctx.device = findCudaDevice(argc, (const char **)argv);
     if (g_ctx.width == 0 || g_ctx.height == 0 || !g_ctx.input_v210_file) {
         cout << "Usage: " << argv[0] << " inputf outputf\n";
@@ -357,9 +377,9 @@ int encode_images(unsigned short *d_inputV210, char *filename, int width, int he
     // Set encode parameters
     //checkCudaErrors(nvjpegEncoderParamsSetQuality(en_params.nv_enc_params, 70, stream));
     //checkCudaErrors(nvjpegEncoderParamsSetOptimizedHuffman(en_params.nv_enc_params, 0, stream));
-    checkCudaErrors(nvjpegEncoderParamsSetSamplingFactors(en_params.nv_enc_params, NVJPEG_CSS_422, stream));
 
     if (n == 1) {
+        checkCudaErrors(nvjpegEncoderParamsSetSamplingFactors(en_params.nv_enc_params, NVJPEG_CSS_444, stream));
         en_params.nv_image.pitch[0] = dstWidth * RGB_SIZE * sizeof(unsigned char);
         checkCudaErrors(cudaMalloc(&en_params.nv_image.channel[0], dstWidth * dstHeight * RGB_SIZE * sizeof(unsigned char)));
         checkCudaErrors(cudaMalloc(&en_params.t_8, width * height * RGB_SIZE * sizeof(unsigned char)));
@@ -369,6 +389,7 @@ int encode_images(unsigned short *d_inputV210, char *filename, int width, int he
         checkCudaErrors(nvjpegEncodeImage(en_params.nv_handle, en_params.nv_enc_state, en_params.nv_enc_params,
             &en_params.nv_image, NVJPEG_INPUT_RGBI, dstWidth, dstHeight, stream));
     } else if (n == 2) {
+        checkCudaErrors(nvjpegEncoderParamsSetSamplingFactors(en_params.nv_enc_params, NVJPEG_CSS_444, stream));
         en_params.nv_image.pitch[0] = dstWidth * RGB_SIZE * sizeof(unsigned char);
         checkCudaErrors(cudaMalloc((void **)&en_params.t_16, dstWidth * dstHeight * YUV422_PLANAR_SIZE * sizeof(unsigned short)));
         checkCudaErrors(cudaMalloc(&en_params.nv_image.channel[0], dstWidth * dstHeight * RGB_SIZE * sizeof(unsigned char)));
@@ -378,6 +399,7 @@ int encode_images(unsigned short *d_inputV210, char *filename, int width, int he
         checkCudaErrors(nvjpegEncodeImage(en_params.nv_handle, en_params.nv_enc_state, en_params.nv_enc_params,
             &en_params.nv_image, NVJPEG_INPUT_RGBI, dstWidth, dstHeight, stream));
     } else if (n == 3) {
+        checkCudaErrors(nvjpegEncoderParamsSetSamplingFactors(en_params.nv_enc_params, NVJPEG_CSS_422, stream));
         en_params.nv_image.pitch[0] = dstWidth * sizeof(unsigned char);
         en_params.nv_image.pitch[1] = dstWidth / 2 * sizeof(unsigned char);
         en_params.nv_image.pitch[2] = dstWidth / 2 * sizeof(unsigned char);
@@ -471,7 +493,7 @@ int encode_images(unsigned short *d_inputV210, char *filename, int width, int he
 */
 void v210ToP010(unsigned short *d_inputV210, char *argv) {
     unsigned short *d_outputYUV422, *d_outputRGB10;
-    unsigned char *d_outputRGB8;
+    unsigned char *d_outputRGB8, *d_outputYUV422_1;
     int size = 0, n = 3;
     int *lookupTable, *lookupTable_cuda;
     char c = 'y';
@@ -515,10 +537,26 @@ void v210ToP010(unsigned short *d_inputV210, char *argv) {
         ss >> n;
     }
     if (n == 1) {
-        checkCudaErrors(cudaMalloc((void **)&d_outputYUV422, size * YUV422_PLANAR_SIZE * sizeof(unsigned short)));
-        cudaEventRecord(start, 0);
-        for (int i = 0; i < TEST_LOOP; i++) {
-            convertToP210(d_inputV210, d_outputYUV422, g_ctx.ctx_pitch, g_ctx.width, g_ctx.height, stream);
+        cout << "10 bit to 8 bit ? (y/N) ";
+        c = 'n';
+        s_cin.clear();
+        getline(cin, s_cin);
+        if (!s_cin.empty()) {
+            istringstream ss(s_cin);
+            ss >> c;
+        }
+        if (c == 'y') {
+            checkCudaErrors(cudaMalloc((void **)&d_outputYUV422_1, size * YUV422_PLANAR_SIZE * sizeof(unsigned char)));
+            cudaEventRecord(start, 0);
+            for (int i = 0; i < TEST_LOOP; i++) {
+                convertToP208(d_inputV210, d_outputYUV422_1, g_ctx.ctx_pitch, g_ctx.width, g_ctx.height, lookupTable_cuda, stream);
+            }
+        } else if (c == 'n') {
+            checkCudaErrors(cudaMalloc((void **)&d_outputYUV422, size * YUV422_PLANAR_SIZE * sizeof(unsigned short)));
+            cudaEventRecord(start, 0);
+            for (int i = 0; i < TEST_LOOP; i++) {
+                convertToP210(d_inputV210, d_outputYUV422, g_ctx.ctx_pitch, g_ctx.width, g_ctx.height, stream);
+            }
         }
     } else if (n == 2) {
         cout << "10 bit to 8 bit ? (y/N) ";
@@ -565,39 +603,75 @@ void v210ToP010(unsigned short *d_inputV210, char *argv) {
     checkCudaErrors(cudaEventElapsedTime(&elapsedTime, start, stop));
     cout.precision(3);
     if (n == 1) {
-        cout << fixed << "  CUDA v210 to p210(" << g_ctx.width << "x" << g_ctx.height << " --> "
-        << g_ctx.width << "x" << g_ctx.height << "), "
-        << "average time: " << (elapsedTime / (TEST_LOOP * 1.0f)) << "ms"
-        << " ==> " << (elapsedTime / (TEST_LOOP * 1.0f)) / g_ctx.batch << " ms/frame\n";
-        c = 'n';
-        s_cin.clear();
-        cout << "Write the dpx file ? (y/N) ";
-        getline(cin, s_cin);
-        if (!s_cin.empty()) {
-            istringstream ss(s_cin);
-            ss >> c;
+        if (c == 'n') {
+            cout << fixed << "  CUDA v210 to p210(" << g_ctx.width << "x" << g_ctx.height << " --> "
+            << g_ctx.width << "x" << g_ctx.height << "), "
+            << "average time: " << (elapsedTime / (TEST_LOOP * 1.0f)) << "ms"
+            << " ==> " << (elapsedTime / (TEST_LOOP * 1.0f)) / g_ctx.batch << " ms/frame\n";
+            c = 'n';
+            s_cin.clear();
+            cout << "Write the dpx file ? (y/N) ";
+            getline(cin, s_cin);
+            if (!s_cin.empty()) {
+                istringstream ss(s_cin);
+                ss >> c;
+            }
+            if (c == 'y') {
+                string s;
+                cout << "File name : ";
+                cin >> s;
+                dpxHandler(d_outputYUV422, g_ctx.width, g_ctx.height, g_ctx.batch, s, YUV422_PLANAR_SIZE);
+            }
+            c = 'n';
+            s_cin.clear();
+            cout << "Write the row file ? (y/N) ";
+            getline(cin, s_cin);
+            if (!s_cin.empty()) {
+                istringstream ss(s_cin);
+                ss >> c;
+            }
+            if (c == 'y') {
+                string s;
+                cout << "File name: ";
+                cin >> s;
+                dumpYUV(d_outputYUV422, g_ctx.width, g_ctx.height, g_ctx.batch, s, YUV422_PLANAR_SIZE, stream);
+            }
+            checkCudaErrors(cudaFree(d_outputYUV422));
+        } else if (c == 'y') {
+            cout << fixed << "  CUDA v210 to p208(" << g_ctx.width << "x" << g_ctx.height << " --> "
+            << g_ctx.width << "x" << g_ctx.height << "), "
+            << "average time: " << (elapsedTime / (TEST_LOOP * 1.0f)) << "ms"
+            << " ==> " << (elapsedTime / (TEST_LOOP * 1.0f)) / g_ctx.batch << " ms/frame\n";
+            c = 'n';
+            s_cin.clear();
+            cout << "Write the dpx file ? (y/N) ";
+            getline(cin, s_cin);
+            if (!s_cin.empty()) {
+                istringstream ss(s_cin);
+                ss >> c;
+            }
+            if (c == 'y') {
+                string s;
+                cout << "File name : ";
+                cin >> s;
+                dpxHandler(d_outputYUV422_1, g_ctx.width, g_ctx.height, g_ctx.batch, s, YUV422_PLANAR_SIZE);
+            }
+            c = 'n';
+            s_cin.clear();
+            cout << "Write the row file ? (y/N) ";
+            getline(cin, s_cin);
+            if (!s_cin.empty()) {
+                istringstream ss(s_cin);
+                ss >> c;
+            }
+            if (c == 'y') {
+                string s;
+                cout << "File name: ";
+                cin >> s;
+                dumpYUV(d_outputYUV422_1, g_ctx.width, g_ctx.height, g_ctx.batch, s, YUV422_PLANAR_SIZE, stream);
+            }
+            checkCudaErrors(cudaFree(d_outputYUV422_1));
         }
-        if (c == 'y') {
-            string s;
-            cout << "File name : ";
-            cin >> s;
-            dpxHandler(d_outputYUV422, g_ctx.width, g_ctx.height, g_ctx.batch, s, YUV422_PLANAR_SIZE);
-        }
-        c = 'n';
-        s_cin.clear();
-        cout << "Write the row file ? (y/N) ";
-        getline(cin, s_cin);
-        if (!s_cin.empty()) {
-            istringstream ss(s_cin);
-            ss >> c;
-        }
-        if (c == 'y') {
-            string s;
-            cout << "File name: ";
-            cin >> s;
-            dumpYUV(d_outputYUV422, g_ctx.width, g_ctx.height, g_ctx.batch, s, YUV422_PLANAR_SIZE, stream);
-        }
-        checkCudaErrors(cudaFree(d_outputYUV422));
     } else if (n == 2) {
         if (c == 'y') { // 10 bit to 8 bit
             cout << fixed << "  CUDA v210 to RGB 8 bit(" << g_ctx.width << "x" << g_ctx.height << " --> "
@@ -685,6 +759,9 @@ void v210ToP010(unsigned short *d_inputV210, char *argv) {
 int convert(int argc, char* argv[]) {
     unsigned short *d_inputV210;
     int size = 0;
+    if (!isGPUEnable()) {
+        return EXIT_FAILURE;
+    }
     if (parseCmdLine(argc, argv) < 0) {
         return EXIT_FAILURE;
     }

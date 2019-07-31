@@ -10,4 +10,6 @@ using namespace std;
 extern "C"
 void convertToP210(uint16_t *dpSrc, uint16_t *dpDst, int nPitch, int nWidth, int nHeight, cudaStream_t stream = 0);
 
+void convertToP208(uint16_t *dpSrc, uint8_t *dpDst, int nPitch, int nWidth, int nHeight, int *lookupTable, cudaStream_t stream = 0);
+
 #endif // !__H_CONVERTTOP210__

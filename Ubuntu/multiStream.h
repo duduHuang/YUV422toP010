@@ -57,6 +57,6 @@ typedef struct _nv210_context_t {
 	unsigned char *t_8;
 } encode_params_t;*/
 
-int multiStream(int argc, char* argv[], int device_sync_method, bool bPinGenericMemory);
+int multiStream(int argc, char* argv[]);
 
 #endif // !__H_MULTISTREAM__

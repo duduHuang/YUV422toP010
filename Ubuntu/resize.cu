@@ -119,7 +119,7 @@ __global__ static void resizeBatchKernel(const uint16_t *p_Src, int nSrcPitch, i
             p_dst[j + k + 0] = u0;
             j = tidd * nDstWidth / 2 + nDstWidth * nDstHeight * 3 / 2;
             p_dst[j + k + 0] = v0;
-		}
+        }
     } else if (scale == 2) {
         uint32_t v0, y0, u0, y2, u1, y1, u2, y3, v1, y5, v2, y4;
         int nDstH = nDstHeight;
@@ -168,7 +168,7 @@ __global__ static void resizeBatchKernel(const uint16_t *p_Src, int nSrcPitch, i
             p_dst[j + k + 0] = v0;
             p_dst[j + k + 1] = v1;
             p_dst[j + k + 2] = v2;
-		}
+        }
     }
 }
 
