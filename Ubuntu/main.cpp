@@ -1,12 +1,14 @@
 #include <iostream>
-//#include "multiStream.h"
-#include "convert.h"
+
+int convert(int argc, char** argv);
+bool isGPUEnable();
 
 using namespace std;
 
 int main(int argc, char* argv[]) {
 
-    convert(argc, argv);
-    //multiStream(argc, argv);
+    if (isGPUEnable()) {
+		convert(argc, argv);
+	}
     return 0;
 }

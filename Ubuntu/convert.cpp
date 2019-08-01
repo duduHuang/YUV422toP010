@@ -7,7 +7,9 @@
 using namespace dpx;
 
 nv210_to_p010_context_t g_ctx;
+void converter(unsigned short *v210Src, unsigned char *p208Dst, int nSrcW, int nSrcH, int nDstw, int nDstH, int *nJPEGSize);
 
+//           call this method to do -----> check cuda / gpu
 bool isGPUEnable() {
     cout << "\n CUDA Device Query (Runtime API) version (CUDART static linking)\n\n";
     int deviceCount = 0;
@@ -758,6 +760,7 @@ void v210ToP010(unsigned short *d_inputV210, char *argv) {
 
 int convert(int argc, char* argv[]) {
     unsigned short *d_inputV210;
+    unsigned char *p208;
     int size = 0;
     if (!isGPUEnable()) {
         return EXIT_FAILURE;
@@ -784,8 +787,78 @@ int convert(int argc, char* argv[]) {
     }
 
     cout << "V210 to P210\n";
-    v210ToP010(d_inputV210, argv[2]);
+    //v210ToP010(d_inputV210, argv[2]);
+    p208 = (unsigned char *)malloc(g_ctx.dst_width * g_ctx.dst_height * 2);
+    int nJPEGSize = 0;
+    converter(d_inputV210, p208, g_ctx.width, g_ctx.height, g_ctx.dst_width, g_ctx.dst_height, &nJPEGSize);
+    ofstream output_file("r.jpg", ios::out | ios::binary);
+    output_file.write((char *)p208, nJPEGSize);
+    output_file.close();
 
     checkCudaErrors(cudaFree(d_inputV210));
+    free(p208);
     return EXIT_SUCCESS;
+}
+
+//      call this method to do  ---> v210 -> resize -> nvJPEG
+void converter(unsigned short *v210Src, unsigned char *p208Dst, int nSrcW, int nSrcH, int nDstw, int nDstH, int *nJPEGSize) {
+    int rowByte = (nSrcW + 47) / 48 * 128 / 2;
+    encode_params_t en_params;
+    size_t length = 0;
+    int *lookupTable, *lookupTable_cuda;
+    cudaStream_t stream;
+    checkCudaErrors(cudaStreamCreate(&stream));
+
+    lookupTable = (int *)malloc(sizeof(int) * 1024);
+    checkCudaErrors(cudaMalloc((void**)&lookupTable_cuda, sizeof(int) * 1024));
+    lookupTableF(lookupTable);
+    cudaMemcpy(lookupTable_cuda, lookupTable, sizeof(int) * 1024, cudaMemcpyHostToDevice);
+
+    // initialize nvjpeg structures
+    checkCudaErrors(nvjpegCreateSimple(&en_params.nv_handle));
+    checkCudaErrors(nvjpegEncoderStateCreate(en_params.nv_handle, &en_params.nv_enc_state, stream));
+    checkCudaErrors(nvjpegEncoderParamsCreate(en_params.nv_handle, &en_params.nv_enc_params, stream));
+
+    checkCudaErrors(nvjpegEncoderParamsSetSamplingFactors(en_params.nv_enc_params, NVJPEG_CSS_422, stream));
+
+    checkCudaErrors(cudaMalloc((void **)&en_params.t_16, rowByte * nSrcH * sizeof(unsigned short)));
+    en_params.nv_image.pitch[0] = nDstw * sizeof(unsigned char);
+    en_params.nv_image.pitch[1] = nDstw / 2 * sizeof(unsigned char);
+    en_params.nv_image.pitch[2] = nDstw / 2 * sizeof(unsigned char);
+    checkCudaErrors(cudaMalloc(&en_params.nv_image.channel[0], nDstw * nDstH * sizeof(unsigned char)));
+    checkCudaErrors(cudaMalloc(&en_params.nv_image.channel[1], nDstw * nDstH / 2 * sizeof(unsigned char)));
+    checkCudaErrors(cudaMalloc(&en_params.nv_image.channel[2], nDstw * nDstH / 2 * sizeof(unsigned char)));
+
+    checkCudaErrors(cudaMemcpy((void *)en_params.t_16, (void *)v210Src, rowByte * nSrcH * sizeof(unsigned short), cudaMemcpyHostToDevice));
+    resizeBatch(en_params.t_16, rowByte, nSrcH,
+        en_params.nv_image.channel[0], en_params.nv_image.channel[1], en_params.nv_image.channel[2],
+        nDstw, nDstH, 1, lookupTable_cuda, stream);
+
+    checkCudaErrors(nvjpegEncodeYUV(en_params.nv_handle, en_params.nv_enc_state, en_params.nv_enc_params,
+        &en_params.nv_image, NVJPEG_CSS_422, nDstw, nDstH, stream));
+
+    checkCudaErrors(cudaStreamSynchronize(stream));
+    // get compressed stream size
+    checkCudaErrors(
+      nvjpegEncodeRetrieveBitstream(en_params.nv_handle, en_params.nv_enc_state, NULL, &length, stream));
+
+    // get stream itself
+    checkCudaErrors(cudaStreamSynchronize(stream));
+    vector<unsigned char> jpeg(length);
+    checkCudaErrors(nvjpegEncodeRetrieveBitstream(en_params.nv_handle, en_params.nv_enc_state, jpeg.data(), &length, stream));
+
+    // write stream to file
+    checkCudaErrors(cudaStreamSynchronize(stream));
+    memcpy(p208Dst, jpeg.data(), length);
+    *nJPEGSize = length;
+    checkCudaErrors(cudaFree(en_params.t_16));
+    checkCudaErrors(cudaFree(en_params.nv_image.channel[0]));
+    checkCudaErrors(cudaFree(en_params.nv_image.channel[1]));
+    checkCudaErrors(cudaFree(en_params.nv_image.channel[2]));
+    checkCudaErrors(cudaStreamDestroy(stream));
+    checkCudaErrors(cudaFree(lookupTable_cuda));
+    free(lookupTable);
+    checkCudaErrors(nvjpegDestroy(en_params.nv_handle));
+    checkCudaErrors(nvjpegEncoderStateDestroy(en_params.nv_enc_state));
+    checkCudaErrors(nvjpegEncoderParamsDestroy(en_params.nv_enc_params));
 }
