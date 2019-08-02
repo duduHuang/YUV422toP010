@@ -48,5 +48,7 @@ typedef struct _encode_params_t {
 } encode_params_t;
 
 int convert(int argc, char* argv[]);
+bool isGPUEnable();
+void converter(unsigned short *v210Src, unsigned char *p208Dst, int nSrcW, int nSrcH, int nDstw, int nDstH, int *nJPEGSize);
 
 #endif // !__H_CONVERT__
