@@ -4,7 +4,7 @@
 #include "convertToRGB.h"
 
 __global__ static void convertToRGBKernel(const uint16_t *pV210, uint16_t *tt, int nSrcWidth,
-    int nDstWidth, int nDstHeight, int nBatch) {
+    int nDstWidth, int nDstHeight) {
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
     int tidd = blockIdx.y * blockDim.y + threadIdx.y;
     uint32_t v0, y0, u0, y2, u1, y1, u2, y3, v1, y5, v2, y4;
@@ -62,11 +62,10 @@ __global__ static void convertToRGBKernel(const uint16_t *pV210, uint16_t *tt, i
     }
 }
 
-void convertToRGB(uint16_t *dpSrc, uint16_t *dpDst, int nSrcWidth, int nDstWidth, int nDstHeight,
-    int nBatch, cudaStream_t stream) {
+void convertToRGB(uint16_t *dpSrc, uint16_t *dpDst, int nSrcWidth, int nDstWidth, int nDstHeight, cudaStream_t stream) {
     dim3 blocks(16, 1, 1);
     dim3 grids((nSrcWidth + blocks.x - 1) / blocks.x, (nDstHeight + blocks.y - 1) / blocks.y, 1);
-    convertToRGBKernel << <grids, blocks, 0, stream >> > (dpSrc, dpDst, nSrcWidth, nDstWidth, nDstHeight, nBatch);
+    convertToRGBKernel << <grids, blocks, 0, stream >> > (dpSrc, dpDst, nSrcWidth, nDstWidth, nDstHeight);
 }
 
 __global__ static void convertToRGBKernel(const uint16_t *pV210, uint8_t *tt, int nSrcWidth,
@@ -207,7 +206,7 @@ __global__ static void convertToRGBKernel(const uint16_t *pV210, uint8_t *tt, in
     }
 }
 
-void convertToRGB(uint16_t *dpSrc, uint8_t *dpDst, int nSrcWidth, int nDstWidth, int nDstHeight,
+void convertToRGBTest(uint16_t *dpSrc, uint8_t *dpDst, int nSrcWidth, int nDstWidth, int nDstHeight,
     int nBatch, int *lookupTable, cudaStream_t stream) {
     dim3 blocks(32, 16, 1);
     dim3 grids((nSrcWidth + blocks.x - 1) / blocks.x, (nDstHeight + blocks.y - 1) / blocks.y, 1);
@@ -215,7 +214,7 @@ void convertToRGB(uint16_t *dpSrc, uint8_t *dpDst, int nSrcWidth, int nDstWidth,
 }
 
 __global__ static void convertVToRGBKernel(const uint16_t *pV210, uint8_t *tt1, int nSrcWidth,
-    int nDstWidth, int nDstHeight, int nBatch, int *lookupTable) {
+    int nDstWidth, int nDstHeight, int *lookupTable) {
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
     int tidd = blockIdx.y * blockDim.y + threadIdx.y;
     uint32_t v0, y0, u0, y2, u1, y1, u2, y3, v1, y5, v2, y4;
@@ -302,7 +301,7 @@ __global__ static void convertVToRGBKernel(const uint16_t *pV210, uint8_t *tt1, 
 }
 
 __global__ static void convertPToRGBKernel(const uint16_t *dpSrc, uint8_t *tt1, int nSrcWidth,
-    int nDstWidth, int nDstHeight, int nBatch, int *lookupTable) {
+    int nDstWidth, int nDstHeight, int *lookupTable) {
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
     int tidd = blockIdx.y * blockDim.y + threadIdx.y;
     uint32_t v0, y0, u0, y1;
@@ -340,15 +339,15 @@ __global__ static void convertPToRGBKernel(const uint16_t *dpSrc, uint8_t *tt1, 
 }
 
 void convertToRGB(uint16_t *dpSrc, uint8_t *dpDst, int nSrcWidth, int nDstWidth, int nDstHeight,
-    int nBatch, int *lookupTable, yuv_format yuvFormat, cudaStream_t stream) {
+    int *lookupTable, yuv_format yuvFormat, cudaStream_t stream) {
     if (yuvFormat == PACKED) {
     dim3 blocks(32, 16, 1);
     dim3 grids((nSrcWidth + blocks.x - 1) / blocks.x, (nDstHeight + blocks.y - 1) / blocks.y, 1);
-        convertVToRGBKernel << <grids, blocks, 0, stream >> > (dpSrc, dpDst, nSrcWidth, nDstWidth, nDstHeight, nBatch, lookupTable);
+        convertVToRGBKernel << <grids, blocks, 0, stream >> > (dpSrc, dpDst, nSrcWidth, nDstWidth, nDstHeight, lookupTable);
     }
     else if (yuvFormat == PLANAR) {
     dim3 blocks(32, 32, 1);
     dim3 grids((nSrcWidth + blocks.x - 1) / blocks.x, (((nDstHeight * 2) + blocks.y) - 1) / blocks.y, 1);
-        convertPToRGBKernel << <grids, blocks, 0, stream >> > (dpSrc, dpDst, nSrcWidth, nDstWidth, nDstHeight, nBatch, lookupTable);
+        convertPToRGBKernel << <grids, blocks, 0, stream >> > (dpSrc, dpDst, nSrcWidth, nDstWidth, nDstHeight, lookupTable);
     }
 }
