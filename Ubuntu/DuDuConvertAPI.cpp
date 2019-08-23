@@ -2,12 +2,13 @@
 #include "DuDuConvertAPI.h"
 
 class ConverterToolWrapper : public IDuDuConverter {
-	ConverterTool* m_convertTool;
+    ConverterTool* m_convertTool;
 public:
     ConverterToolWrapper() : m_convertTool(NULL) 
     {
         m_convertTool = new ConverterTool();
     }
+
     ~ConverterToolWrapper() {
         if (m_convertTool)
             delete m_convertTool;
@@ -20,8 +21,6 @@ public:
             return;
 
         m_convertTool->initialCuda();
-        m_convertTool->preprocess();
-        m_convertTool->lookupTableF();
     }
 
     virtual bool IsGPUSupport() 
@@ -32,14 +31,45 @@ public:
         return m_convertTool->isGPUEnable();
     }
 
-    virtual void ConvertAndResize(unsigned short *src, int nSrcW, int nSrcH,
-        unsigned char *p208Dst, int nDstW, int nDstH, int *nJPEGSize) 
+    virtual void SetSrcSize(int w, int h)
+    {
+        if (!m_convertTool)
+            return;
+
+        m_convertTool->setSrcSize(w, h);
+    }
+
+    virtual void SetDstSize(int w, int h)
+    {
+        if (!m_convertTool)
+            return;
+
+        m_convertTool->setDstSize(w, h);
+    }
+
+    virtual void AllocateMem()
+    {
+        if (!m_convertTool)
+            return;
+
+        m_convertTool->lookupTableF();
+        m_convertTool->allocateMem();
+    }
+
+    virtual void ConvertAndResize(unsigned short *src, unsigned char *p208Dst, int *nJPEGSize)
     {
         if (!m_convertTool)
             return;
         
-        m_convertTool->convertToP208ThenResize(src, nSrcW, nSrcH, 
-            p208Dst, nDstW, nDstH, nJPEGSize);
+        m_convertTool->convertToP208ThenResize(src, p208Dst, nJPEGSize);
+    }
+
+    virtual void FreeMemory()
+    {
+        if (!m_convertTool)
+            return;
+
+        m_convertTool->freeMemory();
     }
 
     virtual void Destroy()
@@ -47,7 +77,6 @@ public:
         if (!m_convertTool)
             return;
 
-        m_convertTool->freeMemory();
         m_convertTool->destroyCudaEvent();
     }
 };
@@ -55,5 +84,5 @@ public:
 
 extern "C" IDuDuConverter* DuDuConverterAPICreate()
 {
-	return new ConverterToolWrapper;
+    return new ConverterToolWrapper;
 }

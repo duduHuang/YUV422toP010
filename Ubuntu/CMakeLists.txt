@@ -35,6 +35,7 @@ MESSAGE(STATUS "Generated gencode flags: ${CUDA_gencode_flags}")
 SET(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} ${CUDA_gencode_flags}")
 
 FILE(GLOB CPU_SRC 
+    "${CMAKE_CURRENT_SOURCE_DIR}/writeFile.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/convertTool.cpp"
 	"${CMAKE_CURRENT_SOURCE_DIR}/DuDuConvertAPI.cpp"
 )

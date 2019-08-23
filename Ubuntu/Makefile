@@ -301,20 +301,23 @@ convertToRGB.o:convertToRGB.cu
 resize.o:resize.cu
 	$(EXEC) $(NVCC) $(INCLUDES) $(ALL_CCFLAGS) $(GENCODE_FLAGS) -o $@ -c $<
 
+writeFile.o:writeFile.cpp
+	$(EXEC) $(NVCC) $(INCLUDES) $(ALL_CCFLAGS) $(GENCODE_FLAGS) -o $@ -c $<
+
 convertTool.o:convertTool.cpp
 	$(EXEC) $(NVCC) $(INCLUDES) $(ALL_CCFLAGS) $(GENCODE_FLAGS) -o $@ -c $<
 
 main.o:main.cpp
 	$(EXEC) $(NVCC) $(INCLUDES) $(ALL_CCFLAGS) $(GENCODE_FLAGS) -o $@ -c $<
 
-Convert: convertToP208.o convertToRGB.o resize.o convertTool.o main.o
+Convert: convertToP208.o convertToRGB.o resize.o writeFile.o convertTool.o main.o
 	$(EXEC) $(NVCC) $(ALL_LDFLAGS) $(GENCODE_FLAGS) ./libdpx/libdpx.a -o $@ $+ $(LIBRARIES)
 
 run: build
 	$(EXEC) ./Convert v210.yuv r.jpg
 
 clean:
-	rm -f Convert main.o convertTool.o convertToRGB.o resize.o convertToP208.o r.jpg
+	rm -f Convert main.o convertTool.o writeFile.o convertToRGB.o resize.o convertToP208.o r.jpg
 	rm -rf ../../bin/$(TARGET_ARCH)/$(TARGET_OS)/$(BUILD_TYPE)/Convert
 
 clobber: clean
