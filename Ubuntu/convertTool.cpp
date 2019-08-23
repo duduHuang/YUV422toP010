@@ -21,46 +21,41 @@ const char *sDeviceSyncMethod[] = {
     NULL
 };
 
-int parseCmdLine(nv210_context_t *g_ctx) {
-    // Run using default arguments
-    g_ctx->input_v210_file = "v210.yuv";
-    if (g_ctx->input_v210_file == NULL) {
-        cout << "Cannot find input file\n Exiting\n";
-        return -1;
+bool ConverterTool::printError(string func, string api) {
+    if (cudaStatus != cudaSuccess) {
+        cerr  << func << " " << api << " failed!\n";
+        cerr << "CUDA error at " << cudaGetErrorName(cudaStatus) << "\n";
+        return false;
     }
-    return EXIT_SUCCESS;
+    return true;
 }
 
-static int loadV210Frame(unsigned short *dSrc, nv210_context_t *g_ctx) {
-    int frameSize = g_ctx->img_rowByte * g_ctx->img_height;
-    ifstream v210File(g_ctx->input_v210_file, ifstream::in | ios::binary);
-    if (!v210File.is_open()) {
-        cerr << "Can't open files\n";
-        return -1;
+bool ConverterTool::printNVJPEGError(string func, string api) {
+    if (nvjpegStatus != NVJPEG_STATUS_SUCCESS) {
+        cerr  << func << " " << api << " failed!\n";
+        cerr << "CUDA error at " << _cudaGetErrorEnum(nvjpegStatus) << "\n";
+        return false;
     }
-    v210File.read((char *)dSrc, frameSize * sizeof(unsigned short));
-    if (v210File.gcount() < frameSize * sizeof(unsigned short)) {
-        cerr << "can't get one frame\n";
-        return -1;
-    }
-    v210File.close();
-    return EXIT_SUCCESS;
+    return true;
 }
 
 void ConverterTool::lookupTableF() {
     lookupTable = new int[1024];
 
     cudaStatus = cudaMalloc((void**)&lookupTable_cuda, sizeof(int) * 1024);
-    if (cudaStatus != cudaSuccess) {
-        cerr << "lookupTable_cuda cudaMalloc failed!\n";
-        freeMemory();
-        return;
+    if (!printError("lookupTableF", "cudaMalloc")) {
+        goto Error;
     }
 
     for (int i = 0; i < 1024; ++i) {
         lookupTable[i] = round(i * 0.249);
     }
-    checkCudaErrors(cudaMemcpy(lookupTable_cuda, lookupTable, sizeof(int) * 1024, cudaMemcpyHostToDevice));
+    cudaStatus = cudaMemcpy(lookupTable_cuda, lookupTable, sizeof(int) * 1024, cudaMemcpyHostToDevice);
+    if (!printError("lookupTableF", "cudaMemcpy")) {
+        goto Error;
+    }
+Error:
+    delete[] lookupTable;
 }
 
 bool ConverterTool::isGPUEnable() {
@@ -94,28 +89,37 @@ bool ConverterTool::isGPUEnable() {
     }
 
     printf("\n> ");
-    g_ctx->device = findCudaDevice(argc, (const char **)argv);
 
     // check the compute capability of the device
     int num_devices = 0;
-    checkCudaErrors(cudaGetDeviceCount(&num_devices));
+    cudaStatus = cudaGetDeviceCount(&num_devices);
+    if (!printError("isGPUEnable", "cudaGetDeviceCount")) {
+        return false;
+    }
 
     if (0 == num_devices) {
         printf("your system does not have a CUDA capable device, waiving test...\n");
         return false;
     }
 
+    g_ctx->device = findCudaDevice(argc, (const char **)argv);
     // check if the command-line chosen device ID is within range, exit if not
     if (g_ctx->device >= num_devices) {
         printf("cuda_device=%d is invalid, must choose device ID between 0 and %d\n", g_ctx->device, num_devices - 1);
         return false;
     }
 
-    checkCudaErrors(cudaSetDevice(g_ctx->device));
+    cudaStatus = cudaSetDevice(g_ctx->device);
+    if (!printError("isGPUEnable", "cudaSetDevice")) {
+        return false;
+    }
 
     // Checking for compute capabilities
     cudaDeviceProp deviceProp;
-    checkCudaErrors(cudaGetDeviceProperties(&deviceProp, g_ctx->device));
+    cudaStatus = cudaGetDeviceProperties(&deviceProp, g_ctx->device);
+    if (!printError("isGPUEnable", "cudaGetDeviceProperties")) {
+        return false;
+    }
 
     // Check if GPU can map host memory (Generic Method), if not then we override bPinGenericMemory to be false
     if (bPinGenericMemory) {
@@ -146,55 +150,6 @@ bool ConverterTool::isGPUEnable() {
     return true;
 }
 
-inline void AllocateHostMemory(bool bPinGenericMemory, unsigned short **pp_a, unsigned short **ppAligned_a, int nbytes) {
-#if CUDART_VERSION >= 4000
-#if !defined(__arm__) && !defined(__aarch64__)
-    if (bPinGenericMemory) {
-        // allocate a generic page-aligned chunk of system memory
-#ifdef WIN32
-        cout << "> VirtualAlloc() allocating " << (float)nbytes / 1048576.0f
-            << " Mbytes of (generic page-aligned system memory)\n";
-        *pp_a = (unsigned short *)VirtualAlloc(NULL, (nbytes + MEMORY_ALIGNMENT), MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
-#else
-        cout << "> mmap() allocating " << (float)nbytes / 1048576.0f << " Mbytes (generic page-aligned system memory)\n";
-        *pp_a = (unsigned short *)mmap(NULL, (nbytes + MEMORY_ALIGNMENT), PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANON, -1, 0);
-#endif
-        *ppAligned_a = (unsigned short *)ALIGN_UP(*pp_a, MEMORY_ALIGNMENT);
-        cout << "> cudaHostRegister() registering " << (float)nbytes / 1048576.0f
-            << " Mbytes of generic allocated system memory\n";
-        // pin allocate memory
-        checkCudaErrors(cudaHostRegister(*ppAligned_a, nbytes, cudaHostRegisterMapped));
-    }
-    else {
-#endif
-#endif
-        cout << "> cudaMallocHost() allocating " << (float)nbytes / 1048576.0f << " Mbytes of system memory\n";
-        // allocate host memory (pinned is required for achieve asynchronicity)
-        checkCudaErrors(cudaMallocHost((void **)pp_a, nbytes));
-        *ppAligned_a = *pp_a;
-    }
-}
-
-inline void FreeHostMemory(bool bPinGenericMemory, unsigned short **pp_a, unsigned short **ppAligned_a, int nbytes) {
-#if CUDART_VERSION >= 4000
-#if !defined(__arm__) && !defined(__aarch64__)
-    // CUDA 4.0 support pinning of generic host memory
-    if (bPinGenericMemory)  {
-        // unpin and delete host memory
-        checkCudaErrors(cudaHostUnregister(*ppAligned_a));
-#ifdef WIN32
-        VirtualFree(*pp_a, 0, MEM_RELEASE);
-#else
-        munmap(*pp_a, nbytes);
-#endif
-    }
-    else {
-#endif
-#endif
-        cudaFreeHost(*pp_a);
-    }
-}
-
 ConverterTool::ConverterTool() {
     argc = 0;
     argv = 0;
@@ -213,21 +168,41 @@ ConverterTool::~ConverterTool() {
 }
 
 void ConverterTool::initialCuda() {
-    checkCudaErrors(cudaSetDeviceFlags(device_sync_method | (bPinGenericMemory ? cudaDeviceMapHost : 0)));
+    cudaStatus = cudaSetDeviceFlags(device_sync_method | (bPinGenericMemory ? cudaDeviceMapHost : 0));
+    if (!printError("initialCuda", "cudaSetDeviceFlags")) {
+        return;
+    }
     // allocate and initialize an array of stream handles
     int eventflags = ((device_sync_method == cudaDeviceBlockingSync) ? cudaEventBlockingSync : cudaEventDefault);
-    checkCudaErrors(cudaEventCreateWithFlags(&start_event, eventflags));
-    checkCudaErrors(cudaEventCreateWithFlags(&stop_event, eventflags));
-    //streams = (cudaStream_t *)malloc(nstreams * sizeof(cudaStream_t));
+    cudaStatus = cudaEventCreateWithFlags(&start_event, eventflags);
+    if (!printError("initialCuda", "cudaEventCreateWithFlags")) {
+        return;
+    }
+    cudaStatus = cudaEventCreateWithFlags(&stop_event, eventflags);
+    if (!printError("initialCuda", "cudaEventCreateWithFlags")) {
+        return;
+    }
     streams = new cudaStream_t[nstreams];
     for (int i = 0; i < nstreams; i++) {
-        checkCudaErrors(cudaStreamCreate(&(streams[i])));
+        cudaStatus = cudaStreamCreate(&(streams[i]));
+        if (!printError("initialCuda", "cudaStreamCreate")) {
+            return;
+        }
     }
 
     // initialize nvjpeg structures
-    checkCudaErrors(nvjpegCreateSimple(&en_params->nv_handle));
-    checkCudaErrors(nvjpegEncoderStateCreate(en_params->nv_handle, &en_params->nv_enc_state, streams[0]));
-    checkCudaErrors(nvjpegEncoderParamsCreate(en_params->nv_handle, &en_params->nv_enc_params, streams[0]));
+    nvjpegStatus = nvjpegCreateSimple(&en_params->nv_handle);
+    if (!printError("initialCuda", "nvjpegCreateSimple")) {
+        return;
+    }
+    nvjpegStatus = nvjpegEncoderStateCreate(en_params->nv_handle, &en_params->nv_enc_state, streams[0]);
+    if (!printError("initialCuda", "nvjpegEncoderStateCreate")) {
+        return;
+    }
+    nvjpegStatus = nvjpegEncoderParamsCreate(en_params->nv_handle, &en_params->nv_enc_params, streams[0]);
+    if (!printError("initialCuda", "nvjpegEncoderParamsCreate")) {
+        return;
+    }
 }
 
 void ConverterTool::setSrcSize(int w, int h) {
@@ -243,94 +218,119 @@ void ConverterTool::setDstSize(int w, int h) {
 }
 
 void ConverterTool::allocateMem() {
-    checkCudaErrors(cudaMalloc((void **)&en_params->t_16, g_ctx->img_rowByte * g_ctx->img_height * sizeof(unsigned short)));
+    cudaStatus = cudaMalloc((void **)&en_params->t_16, g_ctx->img_rowByte * g_ctx->img_height * sizeof(unsigned short));
+    if (!printError("allocateMem", "cudaMalloc en_params->t_16")) {
+        return;
+    }
     en_params->nv_image.pitch[0] = g_ctx->dst_width * sizeof(unsigned char);
     en_params->nv_image.pitch[1] = g_ctx->dst_width / 2 * sizeof(unsigned char);
     en_params->nv_image.pitch[2] = g_ctx->dst_width / 2 * sizeof(unsigned char);
     int size = g_ctx->dst_width * g_ctx->dst_height;
-    checkCudaErrors(cudaMalloc(&en_params->nv_image.channel[0], size * sizeof(unsigned char)));
-    checkCudaErrors(cudaMalloc(&en_params->nv_image.channel[1], size / 2 * sizeof(unsigned char)));
-    checkCudaErrors(cudaMalloc(&en_params->nv_image.channel[2], size / 2 * sizeof(unsigned char)));
+    cudaStatus = cudaMalloc(&en_params->nv_image.channel[0], size * sizeof(unsigned char));
+    if (!printError("allocateMem", "en_params->nv_image.channel")) {
+        return;
+    }
+    cudaStatus = cudaMalloc(&en_params->nv_image.channel[1], size / 2 * sizeof(unsigned char));
+    if (!printError("allocateMem", "en_params->nv_image.channel")) {
+        return;
+    }
+    cudaStatus = cudaMalloc(&en_params->nv_image.channel[2], size / 2 * sizeof(unsigned char));
+    if (!printError("allocateMem", "en_params->nv_image.channel")) {
+        return;
+    }
 }
 
 void ConverterTool::convertToP208ThenResize(unsigned short *src, unsigned char *p208Dst, int *nJPEGSize) {
     size_t length = 0;
 
-    checkCudaErrors(nvjpegEncoderParamsSetSamplingFactors(en_params->nv_enc_params, NVJPEG_CSS_422, streams[0]));
+    nvjpegStatus = nvjpegEncoderParamsSetSamplingFactors(en_params->nv_enc_params, NVJPEG_CSS_422, streams[0]);
+    if (!printError("convertToP208ThenResize", "nvjpegEncoderParamsSetSamplingFactors")) {
+        return;
+    }
 
-    checkCudaErrors(cudaMemcpy((void *)en_params->t_16, (void *)src,
-        g_ctx->img_rowByte * g_ctx->img_height * sizeof(unsigned short), cudaMemcpyHostToDevice));
+    cudaStatus = cudaMemcpy((void *)en_params->t_16, (void *)src,
+        g_ctx->img_rowByte * g_ctx->img_height * sizeof(unsigned short), cudaMemcpyHostToDevice);
+    if (!printError("convertToP208ThenResize", "cudaMemcpy en_params->t_16")) {
+        return;
+    }
     resizeBatch(en_params->t_16, g_ctx->img_rowByte, g_ctx->img_height,
         en_params->nv_image.channel[0], en_params->nv_image.channel[1], en_params->nv_image.channel[2],
         g_ctx->dst_width, g_ctx->dst_height, lookupTable_cuda, streams[0]);
 
-    checkCudaErrors(nvjpegEncodeYUV(en_params->nv_handle, en_params->nv_enc_state, en_params->nv_enc_params,
-        &en_params->nv_image, NVJPEG_CSS_422, g_ctx->dst_width, g_ctx->dst_height, streams[0]));
+    nvjpegStatus = nvjpegEncodeYUV(en_params->nv_handle, en_params->nv_enc_state, en_params->nv_enc_params,
+        &en_params->nv_image, NVJPEG_CSS_422, g_ctx->dst_width, g_ctx->dst_height, streams[0]);
+    if (!printError("convertToP208ThenResize", "nvjpegEncodeYUV")) {
+        return;
+    }
 
-    checkCudaErrors(cudaStreamSynchronize(streams[0]));
+    cudaStatus = cudaStreamSynchronize(streams[0]);
+    if (!printError("convertToP208ThenResize", "cudaStreamSynchronize")) {
+        return;
+    }
     // get compressed stream size
-    checkCudaErrors(
-        nvjpegEncodeRetrieveBitstream(en_params->nv_handle, en_params->nv_enc_state, NULL, &length, streams[0]));
+    nvjpegStatus = nvjpegEncodeRetrieveBitstream(en_params->nv_handle, en_params->nv_enc_state, NULL, &length, streams[0]);
+    if (!printError("convertToP208ThenResize", "nvjpegEncodeRetrieveBitstream")) {
+        return;
+    }
 
     // get stream itself
-    checkCudaErrors(cudaStreamSynchronize(streams[0]));
+    cudaStatus = cudaStreamSynchronize(streams[0]);
+    if (!printError("convertToP208ThenResize", "cudaStreamSynchronize")) {
+        return;
+    }
     vector<unsigned char> jpeg(length);
-    checkCudaErrors(
-        nvjpegEncodeRetrieveBitstream(en_params->nv_handle, en_params->nv_enc_state, jpeg.data(), &length, streams[0]));
+    nvjpegStatus = nvjpegEncodeRetrieveBitstream(en_params->nv_handle, en_params->nv_enc_state, jpeg.data(), &length, streams[0]);
+    if (!printError("convertToP208ThenResize", "nvjpegEncodeRetrieveBitstream")) {
+        return;
+    }
 
     // write stream to file
-    checkCudaErrors(cudaStreamSynchronize(streams[0]));
+    cudaStatus = cudaStreamSynchronize(streams[0]);
+    if (!printError("convertToP208ThenResize", "cudaStreamSynchronize")) {
+        return;
+    }
     memcpy(p208Dst, jpeg.data(), length);
     *nJPEGSize = length;
 }
 
-void ConverterTool::testFunction() {
-    unsigned char *p208;
-    p208 = new unsigned char[1280 * 720 * 2];
-    int nJPEGSize = 0;
-    convertToP208ThenResize(v210Src, p208, &nJPEGSize);
-    ofstream output_file("r.jpg", ios::out | ios::binary);
-    output_file.write((char *)p208, nJPEGSize);
-    output_file.close();
-    delete[] p208;
-}
-
-int ConverterTool::preprocess() {
-    if (parseCmdLine(g_ctx) < 0) {
-        return EXIT_FAILURE;
-    }
-
-    // Allocate Host memory (could be using cudaMallocHost or VirtualAlloc/mmap if using the new CUDA 4.0 features
-    AllocateHostMemory(bPinGenericMemory, &v210Src, &v210SrcAligned, v210Size * sizeof(unsigned short));
-
-    // Load v210 yuv data into v210Src
-    if (loadV210Frame(v210Src, g_ctx)) {
-        cerr << "failed to load data!\n";
-        return EXIT_FAILURE;
-    }
-}
-
 void ConverterTool::freeMemory() {
     cout << "Free memory...\n";
-    checkCudaErrors(cudaFree(lookupTable_cuda));
-    delete[] lookupTable;
+    cudaStatus = cudaFree(lookupTable_cuda);
+    printError("freeMemory", "cudaFree lookupTable_cuda");
 
-    checkCudaErrors(cudaFree(en_params->t_16));
-    checkCudaErrors(cudaFree(en_params->nv_image.channel[0]));
-    checkCudaErrors(cudaFree(en_params->nv_image.channel[1]));
-    checkCudaErrors(cudaFree(en_params->nv_image.channel[2]));
+    cudaStatus = cudaFree(en_params->t_16);
+    printError("freeMemory", "cudaFree en_params->t_16");
+
+    cudaStatus = cudaFree(en_params->nv_image.channel[0]);
+    printError("freeMemory", "cudaFree en_params->nv_image.channel");
+
+    cudaStatus = cudaFree(en_params->nv_image.channel[1]);
+    printError("freeMemory", "cudaFree en_params->nv_image.channel");
+
+    cudaStatus = cudaFree(en_params->nv_image.channel[2]);
+    printError("freeMemory", "cudaFree en_params->nv_image.channel");
 }
 
 void ConverterTool::destroyCudaEvent() {
     for (int i = 0; i < nstreams; i++) {
-        checkCudaErrors(cudaStreamDestroy(streams[i]));
+        cudaStatus = cudaStreamDestroy(streams[i]);
+        printError("destroyCudaEvent", "cudaStreamDestroy streams");
     }
     delete[] streams;
-    checkCudaErrors(cudaEventDestroy(start_event));
-    checkCudaErrors(cudaEventDestroy(stop_event));
+    cudaStatus = cudaEventDestroy(start_event);
+    printError("destroyCudaEvent", "cudaStreamDestroy streams");
 
-    checkCudaErrors(nvjpegEncoderStateDestroy(en_params->nv_enc_state));
-    checkCudaErrors(nvjpegEncoderParamsDestroy(en_params->nv_enc_params));
-    checkCudaErrors(nvjpegDestroy(en_params->nv_handle));
+    cudaStatus = cudaEventDestroy(stop_event);
+    printError("destroyCudaEvent", "cudaStreamDestroy stop_event");
+
+    nvjpegStatus = nvjpegEncoderStateDestroy(en_params->nv_enc_state);
+    printError("destroyCudaEvent", "cudaStreamDestroy nv_enc_state");
+
+    nvjpegStatus = nvjpegEncoderParamsDestroy(en_params->nv_enc_params);
+    printError("destroyCudaEvent", "cudaStreamDestroy nv_enc_params");
+
+    nvjpegStatus = nvjpegDestroy(en_params->nv_handle);
+    printError("destroyCudaEvent", "cudaStreamDestroy nv_handle");
+
     delete en_params;
 }
