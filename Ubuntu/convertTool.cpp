@@ -253,7 +253,7 @@ void ConverterTool::convertToP208ThenResize(unsigned short *src, unsigned char *
     if (!printError("convertToP208ThenResize", "cudaMemcpy en_params->t_16")) {
         return;
     }
-    resizeBatch(en_params->t_16, g_ctx->img_rowByte, g_ctx->img_height,
+    convertToRGB(en_params->t_16, g_ctx->img_rowByte, g_ctx->img_height,
         en_params->nv_image.channel[0], en_params->nv_image.channel[1], en_params->nv_image.channel[2],
         g_ctx->dst_width, g_ctx->dst_height, lookupTable_cuda, streams[0]);
 
@@ -291,6 +291,45 @@ void ConverterTool::convertToP208ThenResize(unsigned short *src, unsigned char *
     }
     memcpy(p208Dst, jpeg.data(), length);
     *nJPEGSize = length;
+}
+
+void ConverterTool::allocatSrcMem() {
+    int size = g_ctx->img_width * g_ctx->img_height * RGB_SIZE;
+    cudaStatus = cudaMalloc((void **)&en_params->t_16, size * sizeof(unsigned short));
+    if (!printError("allocatSrcMem", "cudaMalloc en_params->t_16")) {
+        return;
+    }
+}
+
+void ConverterTool::allocatNVJPEGRGBMem() {
+    int size = g_ctx->dst_width * g_ctx->dst_height * RGB_SIZE;
+    en_params->nv_image.pitch[0] = g_ctx->dstWidth * RGB_SIZE * sizeof(unsigned char);
+    cudaStatus = cudaMalloc(&en_params->nv_image.channel[0], size * sizeof(unsigned char));
+    if (!printError("allocatNVJPEGRGBMem", "en_params->nv_image.channel[0]")) {
+        return;
+    }
+}
+
+void ConverterTool::allocatV210DstMem() {
+    cudaStatus = cudaMalloc((void **)&dev_v210Dst, v210Size * sizeof(unsigned char));
+    if (!printError("allocatV210DstMem", "dev_v210Dst")) {
+        return;
+    }
+}
+
+void ConverterTool::RGB10bitConvertToRGB8bitNVJPEG(unsigned short *src, unsigned char *Dst, int *nJPEGSize) {
+    size_t length = 0;
+
+    nvjpegStatus = nvjpegEncoderParamsSetSamplingFactors(en_params->nv_enc_params, NVJPEG_CSS_444, streams[0]);
+    if (!printError("RGB10bitConvertToRGB8bitNVJPEG", "nvjpegEncoderParamsSetSamplingFactors")) {
+        return;
+    }
+
+    cudaStatus = cudaMemcpy((void *)en_params->t_16, (void *)src,
+        g_ctx->img_width * g_ctx->img_height * 3 * sizeof(unsigned short), cudaMemcpyHostToDevice);
+    if (!printError("convertToP208ThenResize", "cudaMemcpy en_params->t_16")) {
+        return;
+    }
 }
 
 void ConverterTool::freeMemory() {
