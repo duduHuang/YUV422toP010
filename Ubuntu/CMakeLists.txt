@@ -38,6 +38,7 @@ FILE(GLOB CPU_SRC
     "${CMAKE_CURRENT_SOURCE_DIR}/writeFile.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/convertTool.cpp"
 	"${CMAKE_CURRENT_SOURCE_DIR}/DuDuConvertAPI.cpp"
+	"${CMAKE_CURRENT_SOURCE_DIR}/DuDuRGBConvertAPI.cpp"
 )
 FILE(GLOB GPU_SRC 
     "${CMAKE_CURRENT_SOURCE_DIR}/*.cu"
@@ -87,6 +88,7 @@ INSTALL(TARGETS duduconvert
 
 INSTALL(FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/include/DuDuConvertAPI.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/DuDuRGBConvertAPI.h
     DESTINATION include
     )
 
