@@ -74,7 +74,6 @@ __global__ static void convertToRGBTestKernel(const uint16_t *pV210, uint8_t *tt
     int tidd = blockIdx.y * blockDim.y + threadIdx.y;
     uint32_t v0, y0, u0, y2, u1, y1, u2, y3, v1, y5, v2, y4;
     uint4 pF;
-    uint16_t tt1[6];
     
     if (tid < (nSrcWidth / 8) && tidd < nDstHeight) {
         int j = tidd * nSrcWidth;

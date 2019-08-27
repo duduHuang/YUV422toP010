@@ -64,6 +64,7 @@ private:
     bool bPinGenericMemory; // we want this to be the default behavior
     int device_sync_method; // by default we use BlockingSync
     cudaError_t cudaStatus;
+    nvjpegStatus_t nvjpegStatus;
     cudaEvent_t start_event, stop_event;
     cudaStream_t *streams;
     int *lookupTable, *lookupTable_cuda;
