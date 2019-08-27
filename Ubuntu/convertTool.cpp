@@ -303,7 +303,7 @@ void ConverterTool::allocatSrcMem() {
 
 void ConverterTool::allocatNVJPEGRGBMem() {
     int size = g_ctx->dst_width * g_ctx->dst_height * RGB_SIZE;
-    en_params->nv_image.pitch[0] = g_ctx->dst_Width * RGB_SIZE * sizeof(unsigned char);
+    en_params->nv_image.pitch[0] = g_ctx->dst_width * RGB_SIZE * sizeof(unsigned char);
     cudaStatus = cudaMalloc(&en_params->nv_image.channel[0], size * sizeof(unsigned char));
     if (!printError("allocatNVJPEGRGBMem", "en_params->nv_image.channel[0]")) {
         return;
