@@ -10,6 +10,9 @@ extern "C"
 void resizeBatch(uint8_t *dpSrc, int nSrcPitch, int nSrcHeight, uint8_t *dpDst, int nDstWidth, int nDstHeight,
     cudaStream_t stram = 0);
 
+void resizeRGB(uint16_t *dpSrc, int nSrcPitch, int nSrcHeight, uint8_t *dpDst, int nDstWidth, int nDstHeight,
+    int *lookupTable_cuda, cudaStream_t stram = 0);
+
 void resizeBatch(uint16_t *dpSrc, int nSrcPitch, int nSrcHeight, uint16_t *dpDst, int nDstWidth, int nDstHeight,
     cudaStream_t stram = 0);
 

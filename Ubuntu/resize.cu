@@ -33,6 +33,36 @@ void resizeBatch(uint8_t *dpSrc, int nSrcPitch, int nSrcHeight, uint8_t *dpDst, 
     resizeBatchKernel << <grids, blocks, 0, stram >> > (dpSrc, nSrcPitch, nSrcHeight, dpDst, nDstWidth, nDstHeight);
 }
 
+__global__ static void resizeRGBKernel(const uint16_t *p_Src, int nSrcPitch, int nSrcHeight,
+    uint8_t *p_dst, int nDstWidth, int nDstHeight, int *lookupTable_cuda) {
+    int tid = blockIdx.x * blockDim.x + threadIdx.x;
+    int tidd = blockIdx.y * blockDim.y + threadIdx.y;
+    ushort3 rgb;
+    int nDstW = nDstWidth;
+    int nDstH = nDstHeight;
+    int yScale = nSrcHeight / nDstHeight;
+    int xScale = 3 * (nSrcPitch / nDstWidth);
+    if (tid < nDstW && tidd < nDstH) {
+        int j = tidd * yScale * nSrcPitch * 3;
+        int k = tid * xScale;
+        rgb.x = p_Src[j + k + 0];
+        rgb.y = p_Src[j + k + 1];
+        rgb.z = p_Src[j + k + 2];
+        k = tid * 3;
+        j = tidd * nDstWidth * 3;
+        p_dst[j + k + 0] = lookupTable_cuda[rgb.x];
+        p_dst[j + k + 1] = lookupTable_cuda[rgb.y];
+        p_dst[j + k + 2] = lookupTable_cuda[rgb.z];
+    }
+}
+
+void resizeRGB(uint16_t *dpSrc, int nSrcPitch, int nSrcHeight, uint8_t *dpDst, int nDstWidth, int nDstHeight,
+    int *lookupTable_cuda, cudaStream_t stram) {
+    dim3 blocks(32, 32, 1);
+    dim3 grids((nSrcPitch + blocks.x - 1) / blocks.x, (((nSrcHeight * 3) + blocks.y) - 1) / blocks.y, 1);
+    resizeRGBKernel << <grids, blocks, 0, stram >> > (dpSrc, nSrcPitch, nSrcHeight, dpDst, nDstWidth, nDstHeight, lookupTable_cuda);
+}
+
 __global__ static void resizeBatchKernel(const uint16_t *p_Src, int nSrcPitch, int nSrcHeight,
     uint16_t *p_dst, int nDstWidth, int nDstHeight) {
     int tid = blockIdx.x * blockDim.x + threadIdx.x;

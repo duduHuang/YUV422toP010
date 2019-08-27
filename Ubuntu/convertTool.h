@@ -56,8 +56,7 @@ class ConverterTool {
 private:
     int argc, v210Size, nstreams;
     char **argv;
-    unsigned short *v210Dst, *v210DstAligned, *dev_v210Dst;
-    unsigned short *rgb10bitSrc, *rgb10bitSrcAligned, *dev_rgb10bitSrc;
+    unsigned short *dev_v210Dst;
     nv210_context_t *g_ctx;
     encode_params_t *en_params;
     // allocate generic memory and pin it laster instead of using cudaHostAlloc()
@@ -70,8 +69,8 @@ private:
     int *lookupTable, *lookupTable_cuda;
 public:
     ConverterTool();
-    bool printError(string func, string api);
-    bool printNVJPEGError(string func, string api);
+    bool isPrintError(string func, string api);
+    bool isPrintNVJPEGError(string func, string api);
     bool isGPUEnable();
     void initialCuda();
     void lookupTableF();
@@ -85,9 +84,11 @@ public:
 
     // IDUDURGBConvert API
     void allocatSrcMem();
+    void setCudaDevSrc(unsigned short *src);
     void allocatNVJPEGRGBMem();
     void allocatV210DstMem();
-    void RGB10bitConvertToRGB8bitNVJPEG(unsigned short *src, unsigned char *Dst, int *nJPEGSize);
+    void RGB10ConvertToRGB8NVJPEG(unsigned char *dst, int *nJPEGSize);
+    void RGB10ConvertToV210(unsigned short *dst);
 
     void freeMemory();
     void destroyCudaEvent();

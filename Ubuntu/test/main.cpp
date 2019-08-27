@@ -12,6 +12,7 @@
 #include <condition_variable>
 
 #include "DuDuConvertAPI.h"
+#include "DuDuRGBConvertAPI.h"
 
 std::condition_variable g_sleepCond;
 std::mutex g_sleepMutex;
