@@ -253,7 +253,7 @@ void ConverterTool::convertToP208ThenResize(unsigned short *src, unsigned char *
     if (!printError("convertToP208ThenResize", "cudaMemcpy en_params->t_16")) {
         return;
     }
-    convertToRGB(en_params->t_16, g_ctx->img_rowByte, g_ctx->img_height,
+    resizeBatch(en_params->t_16, g_ctx->img_rowByte, g_ctx->img_height,
         en_params->nv_image.channel[0], en_params->nv_image.channel[1], en_params->nv_image.channel[2],
         g_ctx->dst_width, g_ctx->dst_height, lookupTable_cuda, streams[0]);
 
@@ -303,7 +303,7 @@ void ConverterTool::allocatSrcMem() {
 
 void ConverterTool::allocatNVJPEGRGBMem() {
     int size = g_ctx->dst_width * g_ctx->dst_height * RGB_SIZE;
-    en_params->nv_image.pitch[0] = g_ctx->dstWidth * RGB_SIZE * sizeof(unsigned char);
+    en_params->nv_image.pitch[0] = g_ctx->dst_Width * RGB_SIZE * sizeof(unsigned char);
     cudaStatus = cudaMalloc(&en_params->nv_image.channel[0], size * sizeof(unsigned char));
     if (!printError("allocatNVJPEGRGBMem", "en_params->nv_image.channel[0]")) {
         return;

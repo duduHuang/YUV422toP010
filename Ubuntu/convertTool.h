@@ -87,6 +87,7 @@ public:
     void allocatSrcMem();
     void allocatNVJPEGRGBMem();
     void allocatV210DstMem();
+    void RGB10bitConvertToRGB8bitNVJPEG();
 
     void freeMemory();
     void destroyCudaEvent();
