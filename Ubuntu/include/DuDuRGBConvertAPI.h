@@ -7,8 +7,12 @@ public:
     virtual bool IsGPUSupport() = 0;
     virtual void SetSrcSize(int w, int h) = 0;
     virtual void SetDstSize(int w, int h) = 0;
-    virtual void AllocateMem() = 0;
-    virtual void ConvertAndResize(unsigned short *src, unsigned char *p208Dst, int *nJPEGSize) = 0;
+    virtual void AllocateSrcAndTableMem() = 0;
+    virtual void SetCudaDevSrc(unsigned short *src) = 0;
+    virtual void AllocateV210DstMem() = 0;
+    virtual void AllocatNVJPEGRGBMem() = 0;
+    virtual void RGB10ConvertAndResizeToNVJPEG(unsigned char *pDst, int *nJPEGSize) = 0;
+    virtual void RGB10ConvertToV210(unsigned short *pDst) = 0;
     virtual void FreeMemory() = 0;
     virtual void Destroy() = 0;
 };
