@@ -1,15 +1,15 @@
 #include "convertTool.h"
 #include "DuDuRGBConvertAPI.h"
 
-class ConverterToolWrapper : public IDuDuRGBConverter {
+class RGBConverterToolWrapper : public IDuDuRGBConverter {
     ConverterTool* m_convertTool;
 public:
-    ConverterToolWrapper() : m_convertTool(NULL)
+    RGBConverterToolWrapper() : m_convertTool(NULL)
     {
         m_convertTool = new ConverterTool();
     }
 
-    ~ConverterToolWrapper() {
+    ~RGBConverterToolWrapper() {
         if (m_convertTool)
             delete m_convertTool;
         m_convertTool = NULL;
@@ -116,5 +116,5 @@ public:
 
 extern "C" IDuDuRGBConverter* DuDuRGBConverterAPICreate()
 {
-    return new ConverterToolWrapper;
+    return new RGBConverterToolWrapper;
 }
