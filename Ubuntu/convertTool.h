@@ -29,10 +29,13 @@ using namespace std;
 #define MEMORY_ALIGNMENT  4096
 #define ALIGN_UP(x, size) ( ((size_t)x + (size - 1)) & (~(size - 1)) )
 
+bool isGPUSupport();
+bool isPrintError(string func, string api);
+bool isPrintNVJPEGError(string func, string api);
+
 typedef struct _nv210_context_t {
     int img_width;
     int img_height;
-    int device;  // cuda device ID
     int img_rowByte; // the value will be suitable for Texture memroy.
     int batch;
 
@@ -42,39 +45,28 @@ typedef struct _nv210_context_t {
 } nv210_context_t;
 
 typedef struct _encode_params_t {
-    nvjpegHandle_t nv_handle;
-    nvjpegEncoderState_t nv_enc_state;
-    nvjpegEncoderParams_t nv_enc_params;
     nvjpegImage_t nv_image;
-    nvjpegStatus_t err;
-
     unsigned short *t_16;
     unsigned char *t_8;
 } encode_params_t;
 
 class ConverterTool {
 private:
-    int argc, v210Size, nstreams;
-    char **argv;
+    int v210Size;
     unsigned short *dev_v210Dst;
     nv210_context_t *g_ctx;
     encode_params_t *en_params;
-    // allocate generic memory and pin it laster instead of using cudaHostAlloc()
-    bool bPinGenericMemory; // we want this to be the default behavior
-    int device_sync_method; // by default we use BlockingSync
-    cudaError_t cudaStatus;
-    nvjpegStatus_t nvjpegStatus;
+    int *lookupTable, *lookupTable_cuda;
+    int nstreams;
     cudaEvent_t start_event, stop_event;
     cudaStream_t *streams;
-    int *lookupTable, *lookupTable_cuda;
+    nvjpegHandle_t nv_handle;
+    nvjpegEncoderState_t nv_enc_state;
+    nvjpegEncoderParams_t nv_enc_params;
 public:
     ConverterTool();
-    bool isPrintError(string func, string api);
-    bool isPrintNVJPEGError(string func, string api);
-    bool isGPUEnable();
-    void initialCuda();
     void lookupTableF();
-
+    void initialCuda();
     void setSrcSize(int w, int h);
     void setDstSize(int w, int h);
 

@@ -4,6 +4,10 @@
 #include "rgbToV210.h"
 #include "resize.h"
 
+int device_sync_method = cudaDeviceScheduleAuto; // by default we use BlockingSync
+cudaError_t cudaStatus;
+nvjpegStatus_t nvjpegStatus;
+
 static const char *sSyncMethod[] = {
     "0 (Automatic Blocking)",
     "1 (Spin Blocking)",
@@ -22,62 +26,27 @@ const char *sDeviceSyncMethod[] = {
     NULL
 };
 
-bool ConverterTool::isPrintError(string func, string api) {
-    if (cudaStatus != cudaSuccess) {
-        cerr  << func << " " << api << " failed!\n";
-        cerr << "CUDA error at " << cudaGetErrorName(cudaStatus) << "\n";
-        return false;
-    }
-    return true;
-}
-
-bool ConverterTool::isPrintNVJPEGError(string func, string api) {
-    if (nvjpegStatus != NVJPEG_STATUS_SUCCESS) {
-        cerr  << func << " " << api << " failed!\n";
-        cerr << "CUDA error at " << _cudaGetErrorEnum(nvjpegStatus) << "\n";
-        return false;
-    }
-    return true;
-}
-
-void ConverterTool::lookupTableF() {
-    lookupTable = new int[1024];
-
-    cudaStatus = cudaMalloc((void**)&lookupTable_cuda, sizeof(int) * 1024);
-    if (!isPrintError("lookupTableF", "cudaMalloc")) {
-        goto Error;
-    }
-
-    for (int i = 0; i < 1024; ++i) {
-        lookupTable[i] = round(i * 0.249);
-    }
-    cudaStatus = cudaMemcpy(lookupTable_cuda, lookupTable, sizeof(int) * 1024, cudaMemcpyHostToDevice);
-    if (!isPrintError("lookupTableF", "cudaMemcpy")) {
-        goto Error;
-    }
-Error:
-    delete[] lookupTable;
-}
-
-bool ConverterTool::isGPUEnable() {
+bool isGPUSupport() {
     float scale_factor = 1.0f;
-    v210Size = ((7680 + 47) / 48 * 128 / 2) * 4320;
+    int v210Size = ((7680 + 47) / 48 * 128 / 2) * 4320;
+    int device;  // cuda device ID
+    cudaError_t cudaStatus;
+    // allocate generic memory and pin it laster instead of using cudaHostAlloc()
+    bool bPinGenericMemory = DEFAULT_PINNED_GENERIC_MEMORY; // we want this to be the default behavior
 
-    if ((device_sync_method = getCmdLineArgumentInt(argc, (const char **)argv, "sync_method")) >= 0) {
+    if ((device_sync_method = getCmdLineArgumentInt(0, 0, "sync_method")) >= 0) {
         if (device_sync_method == 0 || device_sync_method == 1 || device_sync_method == 2 || device_sync_method == 4) {
             cout << "Device synchronization method set to = " << sSyncMethod[device_sync_method] << "\n";
             //printf("Setting reps to 100 to demonstrate steady state\n");
             //nreps = 100;
-        }
-        else {
+        } else {
             cout << "Invalid command line option sync_method=\"" << device_sync_method << "\\\n";
             return false;
         }
-    }
-    else {
+    } else {
         return false;
     }
-    if (checkCmdLineFlag(argc, (const char **)argv, "use_generic_memory")) {
+    if (checkCmdLineFlag(0, 0, "use_generic_memory")) {
 #if defined(__APPLE__) || defined(MACOSX)
         bPinGenericMemory = false;  // Generic Pinning of System Paged memory not currently supported on Mac OSX
 #else
@@ -85,7 +54,7 @@ bool ConverterTool::isGPUEnable() {
 #endif
     }
 
-    if (checkCmdLineFlag(argc, (const char **)argv, "use_cuda_malloc_host")) {
+    if (checkCmdLineFlag(0, 0, "use_cuda_malloc_host")) {
         bPinGenericMemory = false;
     }
 
@@ -103,21 +72,21 @@ bool ConverterTool::isGPUEnable() {
         return false;
     }
 
-    g_ctx->device = findCudaDevice(argc, (const char **)argv);
+    device = findCudaDevice(0, 0);
     // check if the command-line chosen device ID is within range, exit if not
-    if (g_ctx->device >= num_devices) {
-        printf("cuda_device=%d is invalid, must choose device ID between 0 and %d\n", g_ctx->device, num_devices - 1);
+    if (device >= num_devices) {
+        printf("cuda_device=%d is invalid, must choose device ID between 0 and %d\n", device, num_devices - 1);
         return false;
     }
 
-    cudaStatus = cudaSetDevice(g_ctx->device);
+    cudaStatus = cudaSetDevice(device);
     if (!isPrintError("isGPUEnable", "cudaSetDevice")) {
         return false;
     }
 
     // Checking for compute capabilities
     cudaDeviceProp deviceProp;
-    cudaStatus = cudaGetDeviceProperties(&deviceProp, g_ctx->device);
+    cudaStatus = cudaGetDeviceProperties(&deviceProp, device);
     if (!isPrintError("isGPUEnable", "cudaGetDeviceProperties")) {
         return false;
     }
@@ -126,8 +95,7 @@ bool ConverterTool::isGPUEnable() {
     if (bPinGenericMemory) {
         printf("Device: <%s> canMapHostMemory: %s\n", deviceProp.name, deviceProp.canMapHostMemory ? "Yes" : "No");
 
-        if (deviceProp.canMapHostMemory == 0)
-        {
+        if (deviceProp.canMapHostMemory == 0) {
             printf("Using cudaMallocHost, CUDA device does not support mapping of generic host memory\n");
             bPinGenericMemory = false;
         }
@@ -148,16 +116,37 @@ bool ConverterTool::isGPUEnable() {
 
     // enable use of blocking sync, to reduce CPU usage
     printf("> Using CPU/GPU Device Synchronization method (%s)\n", sDeviceSyncMethod[device_sync_method]);
+
+    cudaStatus = cudaDeviceReset();
+    cudaStatus = cudaSetDeviceFlags(device_sync_method | (bPinGenericMemory ? cudaDeviceMapHost : 0));
+    if (!isPrintError("isGPUEnable", "cudaSetDeviceFlags")) {
+        return false;
+    }
+
+    return true;
+}
+
+bool isPrintError(string func, string api) {
+    if (cudaStatus != cudaSuccess) {
+        cerr  << func << " " << api << " failed!\n";
+        cerr << "CUDA error at " << cudaGetErrorName(cudaStatus) << "\n";
+        return false;
+    }
+    return true;
+}
+
+bool isPrintNVJPEGError(string func, string api) {
+    if (nvjpegStatus != NVJPEG_STATUS_SUCCESS) {
+        cerr  << func << " " << api << " failed!\n";
+        cerr << "CUDA error at " << _cudaGetErrorEnum(nvjpegStatus) << "\n";
+        return false;
+    }
     return true;
 }
 
 ConverterTool::ConverterTool() {
-    argc = 0;
-    argv = 0;
     v210Size = 0;
     nstreams = 1;
-    bPinGenericMemory = DEFAULT_PINNED_GENERIC_MEMORY; // we want this to be the default behavior
-    device_sync_method = cudaDeviceScheduleAuto; // by default we use BlockingSync
     g_ctx = new nv210_context_t();
     en_params = new encode_params_t();
 }
@@ -165,14 +154,10 @@ ConverterTool::ConverterTool() {
 ConverterTool::~ConverterTool() {
     freeMemory();
     delete g_ctx;
-    destroyCudaEvent();
+    delete en_params;
 }
 
 void ConverterTool::initialCuda() {
-    cudaStatus = cudaSetDeviceFlags(device_sync_method | (bPinGenericMemory ? cudaDeviceMapHost : 0));
-    if (!isPrintError("initialCuda", "cudaSetDeviceFlags")) {
-        return;
-    }
     // allocate and initialize an array of stream handles
     int eventflags = ((device_sync_method == cudaDeviceBlockingSync) ? cudaEventBlockingSync : cudaEventDefault);
     cudaStatus = cudaEventCreateWithFlags(&start_event, eventflags);
@@ -192,18 +177,37 @@ void ConverterTool::initialCuda() {
     }
 
     // initialize nvjpeg structures
-    nvjpegStatus = nvjpegCreateSimple(&en_params->nv_handle);
+    nvjpegStatus = nvjpegCreateSimple(&nv_handle);
     if (!isPrintNVJPEGError("initialCuda", "nvjpegCreateSimple")) {
         return;
     }
-    nvjpegStatus = nvjpegEncoderStateCreate(en_params->nv_handle, &en_params->nv_enc_state, streams[0]);
+    nvjpegStatus = nvjpegEncoderStateCreate(nv_handle, &nv_enc_state, streams[0]);
     if (!isPrintNVJPEGError("initialCuda", "nvjpegEncoderStateCreate")) {
         return;
     }
-    nvjpegStatus = nvjpegEncoderParamsCreate(en_params->nv_handle, &en_params->nv_enc_params, streams[0]);
+    nvjpegStatus = nvjpegEncoderParamsCreate(nv_handle, &nv_enc_params, streams[0]);
     if (!isPrintNVJPEGError("initialCuda", "nvjpegEncoderParamsCreate")) {
         return;
     }
+}
+
+void ConverterTool::lookupTableF() {
+    lookupTable = new int[1024];
+
+    cudaStatus = cudaMalloc((void**)&lookupTable_cuda, sizeof(int) * 1024);
+    if (!isPrintError("lookupTableF", "cudaMalloc")) {
+        goto Error;
+    }
+
+    for (int i = 0; i < 1024; ++i) {
+        lookupTable[i] = round(i * 0.249);
+    }
+    cudaStatus = cudaMemcpy(lookupTable_cuda, lookupTable, sizeof(int) * 1024, cudaMemcpyHostToDevice);
+    if (!isPrintError("lookupTableF", "cudaMemcpy")) {
+        goto Error;
+    }
+Error:
+    delete[] lookupTable;
 }
 
 void ConverterTool::setSrcSize(int w, int h) {
@@ -244,7 +248,7 @@ void ConverterTool::allocateMem() {
 void ConverterTool::convertToP208ThenResize(unsigned short *src, unsigned char *p208Dst, int *nJPEGSize) {
     size_t length = 0;
 
-    nvjpegStatus = nvjpegEncoderParamsSetSamplingFactors(en_params->nv_enc_params, NVJPEG_CSS_422, streams[0]);
+    nvjpegStatus = nvjpegEncoderParamsSetSamplingFactors(nv_enc_params, NVJPEG_CSS_422, streams[0]);
     if (!isPrintNVJPEGError("convertToP208ThenResize", "nvjpegEncoderParamsSetSamplingFactors")) {
         return;
     }
@@ -258,7 +262,7 @@ void ConverterTool::convertToP208ThenResize(unsigned short *src, unsigned char *
         en_params->nv_image.channel[0], en_params->nv_image.channel[1], en_params->nv_image.channel[2],
         g_ctx->dst_width, g_ctx->dst_height, lookupTable_cuda, streams[0]);
 
-    nvjpegStatus = nvjpegEncodeYUV(en_params->nv_handle, en_params->nv_enc_state, en_params->nv_enc_params,
+    nvjpegStatus = nvjpegEncodeYUV(nv_handle, nv_enc_state, nv_enc_params,
         &en_params->nv_image, NVJPEG_CSS_422, g_ctx->dst_width, g_ctx->dst_height, streams[0]);
     if (!isPrintNVJPEGError("convertToP208ThenResize", "nvjpegEncodeYUV")) {
         return;
@@ -269,7 +273,7 @@ void ConverterTool::convertToP208ThenResize(unsigned short *src, unsigned char *
         return;
     }
     // get compressed stream size
-    nvjpegStatus = nvjpegEncodeRetrieveBitstream(en_params->nv_handle, en_params->nv_enc_state, NULL, &length, streams[0]);
+    nvjpegStatus = nvjpegEncodeRetrieveBitstream(nv_handle, nv_enc_state, NULL, &length, streams[0]);
     if (!isPrintNVJPEGError("convertToP208ThenResize", "nvjpegEncodeRetrieveBitstream")) {
         return;
     }
@@ -280,7 +284,7 @@ void ConverterTool::convertToP208ThenResize(unsigned short *src, unsigned char *
         return;
     }
     vector<unsigned char> jpeg(length);
-    nvjpegStatus = nvjpegEncodeRetrieveBitstream(en_params->nv_handle, en_params->nv_enc_state, jpeg.data(), &length, streams[0]);
+    nvjpegStatus = nvjpegEncodeRetrieveBitstream(nv_handle, nv_enc_state, jpeg.data(), &length, streams[0]);
     if (!isPrintNVJPEGError("convertToP208ThenResize", "nvjpegEncodeRetrieveBitstream")) {
         return;
     }
@@ -329,7 +333,7 @@ void ConverterTool::allocatV210DstMem() {
 void ConverterTool::RGB10ConvertToRGB8NVJPEG(unsigned char *dst, int *nJPEGSize) {
     size_t length = 0;
 
-    nvjpegStatus = nvjpegEncoderParamsSetSamplingFactors(en_params->nv_enc_params, NVJPEG_CSS_444, streams[0]);
+    nvjpegStatus = nvjpegEncoderParamsSetSamplingFactors(nv_enc_params, NVJPEG_CSS_444, streams[0]);
     if (!isPrintNVJPEGError("RGB10ConvertToRGB8NVJPEG", "nvjpegEncoderParamsSetSamplingFactors")) {
         return;
     }
@@ -337,7 +341,7 @@ void ConverterTool::RGB10ConvertToRGB8NVJPEG(unsigned char *dst, int *nJPEGSize)
     resizeRGB(en_params->t_16, g_ctx->img_width, g_ctx->img_height,
         en_params->nv_image.channel[0], g_ctx->dst_width, g_ctx->dst_height, lookupTable_cuda, streams[0]);
 
-    nvjpegStatus = nvjpegEncodeImage(en_params->nv_handle, en_params->nv_enc_state, en_params->nv_enc_params,
+    nvjpegStatus = nvjpegEncodeImage(nv_handle, nv_enc_state, nv_enc_params,
             &en_params->nv_image, NVJPEG_INPUT_RGBI, g_ctx->dst_width, g_ctx->dst_height, streams[0]);
     if (!isPrintNVJPEGError("RGB10ConvertToRGB8NVJPEG", "nvjpegEncodeImage")) {
         return;
@@ -349,7 +353,7 @@ void ConverterTool::RGB10ConvertToRGB8NVJPEG(unsigned char *dst, int *nJPEGSize)
     }
 
     // get compressed stream size
-    nvjpegStatus = nvjpegEncodeRetrieveBitstream(en_params->nv_handle, en_params->nv_enc_state, NULL, &length, streams[0]);
+    nvjpegStatus = nvjpegEncodeRetrieveBitstream(nv_handle, nv_enc_state, NULL, &length, streams[0]);
     if (!isPrintNVJPEGError("RGB10ConvertToRGB8NVJPEG", "nvjpegEncodeRetrieveBitstream")) {
         return;
     }
@@ -360,7 +364,7 @@ void ConverterTool::RGB10ConvertToRGB8NVJPEG(unsigned char *dst, int *nJPEGSize)
         return;
     }
     vector<unsigned char> jpeg(length);
-    nvjpegStatus = nvjpegEncodeRetrieveBitstream(en_params->nv_handle, en_params->nv_enc_state, jpeg.data(), &length, streams[0]);
+    nvjpegStatus = nvjpegEncodeRetrieveBitstream(nv_handle, nv_enc_state, jpeg.data(), &length, streams[0]);
     if (!isPrintNVJPEGError("RGB10ConvertToRGB8NVJPEG", "nvjpegEncodeRetrieveBitstream")) {
         return;
     }
@@ -430,14 +434,12 @@ void ConverterTool::destroyCudaEvent() {
     cudaStatus = cudaEventDestroy(stop_event);
     isPrintError("destroyCudaEvent", "cudaStreamDestroy stop_event");
 
-    nvjpegStatus = nvjpegEncoderStateDestroy(en_params->nv_enc_state);
+    nvjpegStatus = nvjpegEncoderStateDestroy(nv_enc_state);
     isPrintNVJPEGError("destroyCudaEvent", "cudaStreamDestroy nv_enc_state");
 
-    nvjpegStatus = nvjpegEncoderParamsDestroy(en_params->nv_enc_params);
+    nvjpegStatus = nvjpegEncoderParamsDestroy(nv_enc_params);
     isPrintNVJPEGError("destroyCudaEvent", "cudaStreamDestroy nv_enc_params");
 
-    nvjpegStatus = nvjpegDestroy(en_params->nv_handle);
+    nvjpegStatus = nvjpegDestroy(nv_handle);
     isPrintNVJPEGError("destroyCudaEvent", "cudaStreamDestroy nv_handle");
-
-    delete en_params;
 }

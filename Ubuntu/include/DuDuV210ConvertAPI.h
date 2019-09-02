@@ -1,25 +1,23 @@
-#ifndef DUDU_CONVERT_API_H
-#define DUDU_CONVERT_API_H
+#ifndef DUDU_V210CONVERT_API_H
+#define DUDU_V210CONVERT_API_H
 
-class IDuDuConverter {
+class IDuDuV210Converter {
 public:
     virtual void Initialize() = 0;
-    virtual bool IsGPUSupport() = 0;
     virtual void SetSrcSize(int w, int h) = 0;
     virtual void SetDstSize(int w, int h) = 0;
     virtual void AllocateMem() = 0;
     virtual void ConvertAndResize(unsigned short *src, unsigned char *p208Dst, int *nJPEGSize) = 0;
     virtual void FreeMemory() = 0;
-    virtual void Destroy() = 0;
 };
 
 #ifdef __cplusplus
 extern "C"
 {
 #endif
-    IDuDuConverter* DuDuConverterAPICreate();
+    IDuDuV210Converter* DuDuV210ConverterAPICreate();
 #ifdef __cplusplus
 }
 #endif
 
-#endif // DUDU_CONVERT_API_H
+#endif // DUDU_V210CONVERT_API_H

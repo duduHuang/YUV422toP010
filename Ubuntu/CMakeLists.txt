@@ -37,8 +37,9 @@ SET(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} ${CUDA_gencode_flags}")
 FILE(GLOB CPU_SRC 
     "${CMAKE_CURRENT_SOURCE_DIR}/writeFile.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/convertTool.cpp"
-	"${CMAKE_CURRENT_SOURCE_DIR}/DuDuConvertAPI.cpp"
-	"${CMAKE_CURRENT_SOURCE_DIR}/DuDuRGBConvertAPI.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/DuDuV210ConvertAPI.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/DuDuRGBConvertAPI.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/DuDuGPUSupportAPI.cpp"
 )
 FILE(GLOB GPU_SRC 
     "${CMAKE_CURRENT_SOURCE_DIR}/*.cu"
@@ -49,23 +50,23 @@ FILE(GLOB LIBDPX_SRC
 )
 
 INCLUDE_DIRECTORIES(
-	.
-	/usr/local/cuda-10.1/samples/common/inc
-	${CMAKE_CURRENT_SOURCE_DIR}/include
-	${CMAKE_CURRENT_SOURCE_DIR}/libdpx
+    .
+    /usr/local/cuda-10.1/samples/common/inc
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/libdpx
 )
 
 SET(BUILD_SHARED_LIBS ON)
 
 LINK_DIRECTORIES(
-	/usr/lib
-   	/usr/local/lib
+    /usr/lib
+    /usr/local/lib
 )
 
 CUDA_ADD_LIBRARY(duduconvert
     ${CPU_SRC}
     ${GPU_SRC}
-	${LIBDPX_SRC}
+    ${LIBDPX_SRC}
 )
 
 # For debugging
@@ -74,7 +75,7 @@ MESSAGE(STATUS "NVJPEG_LIBRARY:${NVJPEG_LIBRARY}")
 MESSAGE(STATUS "CULIBOS_LIBRARY:${CULIBOS_LIBRARY}")
 
 TARGET_LINK_LIBRARIES(duduconvert
-	${NVJPEG_LIBRARY}
+    ${NVJPEG_LIBRARY}
     ${CULIBOS_LIBRARY}
 )
 
@@ -87,8 +88,9 @@ INSTALL(TARGETS duduconvert
 )
 
 INSTALL(FILES
-    ${CMAKE_CURRENT_SOURCE_DIR}/include/DuDuConvertAPI.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/DuDuV210ConvertAPI.h
     ${CMAKE_CURRENT_SOURCE_DIR}/include/DuDuRGBConvertAPI.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/DuDuGPUSupportAPI.h
     DESTINATION include
     )
 
